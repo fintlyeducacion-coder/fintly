@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", sans-serif;
+  
+  /* Abstracción de variables temáticas de la identidad visual */
+  --color-accent: var(--color-violet-600);
+  --color-accent-hover: var(--color-violet-500);
+  --color-accent-light: var(--color-violet-400);
+  --color-accent-dark: var(--color-violet-950);
+}
+
+/* Clases de utilidad auxiliares */
+body {
+  background-color: #070712;
+  overflow-x: hidden;
+}
+
+/* Ocultar barra de scroll en elementos horizontales de las pestañas */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Estilo para los textos formatados HTML del cuerpo de clases */
+.class-body-html h3 {
+  font-family: "Syne", sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  color: #f3f4f6;
+  transition: color 0.3s ease;
+}
+
+.light .class-body-html h3 {
+  color: #111827;
+}
+
+.class-body-html p {
+  margin-bottom: 1rem;
+  line-height: 1.75;
+  color: #d1d5db;
+  transition: color 0.3s ease;
+}
+
+.light .class-body-html p {
+  color: #374151;
+}
+
+.class-body-html ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.class-body-html li {
+  margin-bottom: 0.35rem;
+  color: #d1d5db;
+  transition: color 0.3s ease;
+}
+
+.light .class-body-html li {
+  color: #374151;
+}
+
+.class-body-html strong {
+  color: #ffffff;
+  font-weight: 600;
+  transition: color 0.3s ease;
+}
+
+.light .class-body-html strong {
+  color: #111827;
+}
+
+/* Modificadores globales para transicionar de tema */
+.light, .light * {
+  --tw-text-opacity: 1;
+}
+
+.light body {
+  background-color: #FAF9F6 !important;
+}
+
+/* Permitir selectores light: en los componentes */
+@variant light (.light &);

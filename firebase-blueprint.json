@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "User": {
+      "title": "Perfil de Usuario",
+      "description": "Información del usuario registrado o autenticado, incluyendo su nombre, rol e iniciales.",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "description": "Correo electrónico único de la persona" },
+        "name": { "type": "string", "description": "Nombre de la persona" },
+        "role": { "type": "string", "enum": ["admin", "directivo", "alumno"], "description": "El rol dentro de la plataforma" },
+        "initials": { "type": "string", "description": "Las iniciales del usuario para el avatar" },
+        "level": { "type": "integer", "description": "Nivel asignado al estudiante" },
+        "school": { "type": "string", "description": "Nombre de la institución educativa asociada" }
+      },
+      "required": ["email", "name", "role", "initials"]
+    },
+    "ClassItem": {
+      "title": "Clase Académica",
+      "description": "Una clase o lección semanal asignada de forma global (Syllabus) o a un colegio específico con fechas personalizadas.",
+      "type": "object",
+      "properties": {
+        "level": { "type": "integer", "description": "Nivel del curso al que pertenece la clase (0-3)" },
+        "week": { "type": "integer", "description": "Semana del curso asignada (1-16)" },
+        "title": { "type": "string", "description": "Título de la clase" },
+        "unlockAt": { "type": "string", "format": "date-time", "description": "Fecha y hora de desbloqueo en ISO" },
+        "deadline": { "type": "string", "format": "date-time", "description": "Fecha de límite de entrega en ISO" },
+        "text": { "type": "string", "description": "Contenido didáctico textual del curso en HTML o texto plano" },
+        "videoId": { "type": "string", "description": "Identificador de YouTube de la clase" },
+        "slidesUrl": { "type": "string", "description": "Enlace embebido de las diapositivas de Google Slides" },
+        "actTitle": { "type": "string", "description": "Título de la actividad práctica" },
+        "actDesc": { "type": "string", "description": "Descripción consigna de la actividad de la semana" },
+        "isSyllabus": { "type": "boolean", "description": "Si forma parte de la plantilla global de syllabus" },
+        "school": { "type": "string", "description": "Establecimiento escolar receptor" }
+      },
+      "required": ["level", "week", "title", "unlockAt", "deadline", "text", "actTitle", "actDesc"]
+    },
+    "Student": {
+      "title": "Estudiante Registrado",
+      "description": "Ficha de estudiante interactiva visualizada por directivos y administradores en las estadísticas.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Nombre completo del alumno" },
+        "email": { "type": "string", "description": "Correo electrónico unívoco" },
+        "initials": { "type": "string", "description": "Iniciales para avatares" },
+        "level": { "type": "integer", "description": "Nivel educativo activo (0-3)" },
+        "progress": { "type": "integer", "description": "Cantidad de semanas resueltas" },
+        "total": { "type": "integer", "description": "Cantidad de clases totales del nivel" },
+        "status": { "type": "string", "enum": ["ok", "warn"], "description": "Semáforo de advertencia según entregas" },
+        "school": { "type": "string", "description": "Ubicación escolar del alumno" }
+      },
+      "required": ["name", "email", "initials", "level", "school"]
+    },
+    "Submission": {
+      "title": "Entrega de Actividad",
+      "description": "Registro oficial de la entrega práctica resuelta por un estudiante.",
+      "type": "object",
+      "properties": {
+        "classLevel": { "type": "integer", "description": "Nivel de la clase respondida" },
+        "classWeek": { "type": "integer", "description": "Semana de la clase respondida" },
+        "studentEmail": { "type": "string", "description": "Correo electrónico del alumno que entrega" },
+        "responseText": { "type": "string", "description": "Texto descriptivo de las decisiones del alumno" },
+        "submittedAt": { "type": "string", "format": "date-time", "description": "Estampa temporal de entrega en ISO" },
+        "grade": { "type": "string", "enum": ["Muy bien", "Bien", "A mejorar"], "description": "La evaluación cualitativa dada por el docente" },
+        "feedback": { "type": "string", "description": "Comentarios de retroalimentación pedagógica" },
+        "correctedBy": { "type": "string", "description": "Email del docente que corrigió la entrega" },
+        "correctedAt": { "type": "string", "format": "date-time", "description": "Fecha y hora de la corrección" }
+      },
+      "required": ["classLevel", "classWeek", "studentEmail", "responseText", "submittedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Perfiles y roles oficiales de las personas ingresadas en el campus."
+    },
+    "/classes/{classId}": {
+      "schema": { "$ref": "#/entities/ClassItem" },
+      "description": "Clases programadas correspondientes al syllabus o asignaciones locales escolares."
+    },
+    "/students/{studentEmail}": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Roster curricular y progreso recalculado de los alumnos del colegio."
+    },
+    "/submissions/{submissionId}": {
+      "schema": { "$ref": "#/entities/Submission" },
+      "description": "Entregas con respuestas detalladas cargadas por los estudiantes."
+    }
+  }
+}

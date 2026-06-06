@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      // Parche de robustez para evitar: Uncaught TypeError: Cannot set property fetch of #<Window> which has only a getter
+      (function() {
+        try {
+          let currentFetch = window.fetch;
+          Object.defineProperty(window, 'fetch', {
+            get: function() {
+              return currentFetch;
+            },
+            set: function(val) {
+              console.warn('Se interceptó redefinición de window.fetch:', val);
+              currentFetch = val;
+            },
+            configurable: true,
+            enumerable: true
+          });
+        } catch (e) {
+          console.warn('No se pudo redefinir window.fetch en el descriptor:', e);
+        }
+      })();
+
+      // Parche de robustez para evitar: Uncaught SyntaxError: "undefined" is not valid JSON
+      (function() {
+        try {
+          const originalParse = JSON.parse;
+          JSON.parse = function(text, reviver) {
+            if (text === 'undefined') {
+              console.warn('JSON.parse interceptado para evitar error "undefined es inválido". Retornando null.');
+              return null;
+            }
+            if (text === undefined) {
+              console.warn('JSON.parse interceptado con valor undefined de tipo JavaScript. Retornando null.');
+              return null;
+            }
+            return originalParse(text, reviver);
+          };
+        } catch (e) {
+          console.warn('No se pudo redefinir JSON.parse para robustez:', e);
+        }
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Google AI Studio App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

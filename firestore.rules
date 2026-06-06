@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety net catch-all: Deny all reads/writes by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Main Helper Functions
+    function isSignedIn() {
+      return request.auth != null && request.auth.token != null;
+    }
+    
+    function emailOf(auth) {
+      return auth.token.email.lower();
+    }
+    
+    function getUserData(email) {
+      return get(/databases/$(database)/documents/users/$(email)).data;
+    }
+    
+    function isStaff() {
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(emailOf(request.auth))) && 
+             (getUserData(emailOf(request.auth)).role == 'admin' || getUserData(emailOf(request.auth)).role == 'directivo');
+    }
+    
+    function isOwner(email) {
+      return isSignedIn() && emailOf(request.auth) == email.lower();
+    }
+
+    // 1. Connection Test Collection
+    match /test/{documentId} {
+      allow read: if true;
+    }
+
+    // 2. Users Collection
+    match /users/{email} {
+      allow read: if isSignedIn() && (isOwner(email) || isStaff());
+      allow create: if isSignedIn() && (isOwner(email) || isStaff()) && (isStaff() || request.resource.data.role == 'alumno');
+      allow update: if isStaff() || (isOwner(email) && request.resource.data.role == resource.data.role);
+      allow delete: if isStaff();
+    }
+
+    // 3. Classes Collection
+    match /classes/{classId} {
+      allow read: if isSignedIn();
+      allow write: if isStaff();
+    }
+
+    // 4. Students Collection
+    match /students/{studentId} {
+      allow read: if isStaff() || (isSignedIn() && resource.data.email.lower() == emailOf(request.auth));
+      allow create: if isStaff() || (isSignedIn() && request.resource.data.email.lower() == emailOf(request.auth));
+      allow update: if isStaff() || (isSignedIn() && resource.data.email.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'school']));
+      allow delete: if isStaff();
+    }
+
+    // 5. Submissions Collection
+    match /submissions/{submissionId} {
+      allow get: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth));
+      allow list: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth));
+      allow create: if isStaff() || (isSignedIn() && request.resource.data.studentEmail.lower() == emailOf(request.auth) && !request.resource.data.keys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']));
+      allow update: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']));
+      allow delete: if isStaff();
+    }
+
+    // 6. Mail (Trigger Email Extension) Collection
+    match /mail/{mailId} {
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update, delete: if false;
+    }
+  }
+}

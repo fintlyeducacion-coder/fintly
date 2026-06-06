@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Fintly Campus",
+  "description": "Campus educativo de finanzas personales y hábitos financieros para alumnos y profesores de Fintly",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
