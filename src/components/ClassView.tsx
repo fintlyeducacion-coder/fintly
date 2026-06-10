@@ -42,6 +42,20 @@ function ConfettiSower() {
   );
 }
 
+function getEmbedUrl(input: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  
+  // Try to extract URL from src="..." parameter
+  const srcRegex = /src\s*=\s*["'“«’‘]([^"'”»’‘]+)["'”»’‘]/i;
+  const match = trimmed.match(srcRegex);
+  if (match && match[1]) {
+    return match[1].trim().replace(/["'”»’‘>]+$/, '').trim();
+  }
+  
+  return trimmed;
+}
+
 interface ClassViewProps {
   user: User;
   classItem: ClassItem;
@@ -240,11 +254,12 @@ export default function ClassView({
             className="w-full"
           >
             {classItem.slidesUrl ? (
-              <div className="rounded-2xl border border-white/5 light:border-neutral-300 overflow-hidden bg-black/35 light:bg-neutral-50 shadow-xl">
+              <div className="rounded-2xl border border-white/5 light:border-neutral-300 overflow-hidden bg-[#070714] light:bg-[#fbfbfb] shadow-xl relative">
                 <iframe
-                  title="Google slides embed code"
-                  src={classItem.slidesUrl}
-                  className="w-full h-[400px] border-0"
+                  title="Presentación de la clase"
+                  src={getEmbedUrl(classItem.slidesUrl)}
+                  className="w-full h-[320px] sm:h-[480px] border-0"
+                  allow="fullscreen"
                   allowFullScreen
                 />
               </div>

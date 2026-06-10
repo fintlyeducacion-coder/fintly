@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Save, BookOpen, Film, Layers, FileText, Calendar, Link } from 'lucide-react';
+import { 
+  X, Save, BookOpen, Film, Layers, FileText, Calendar, Link,
+  Eye, ArrowLeft, Video, Presentation, FilePenLine, Clock, CalendarDays, CheckCircle2
+} from 'lucide-react';
 import { ClassItem } from '../types';
 
 interface ClassModalProps {
@@ -8,6 +11,20 @@ interface ClassModalProps {
   onClose: () => void;
   onSave: (classItem: ClassItem) => void;
   initialClass: ClassItem | null;
+}
+
+function getEmbedUrl(input: string): string {
+  if (!input) return '';
+  const trimmed = input.trim();
+  
+  // Try to extract URL from src="..." parameter
+  const srcRegex = /src\s*=\s*["'“«’‘]([^"'”»’‘]+)["'”»’‘]/i;
+  const match = trimmed.match(srcRegex);
+  if (match && match[1]) {
+    return match[1].trim().replace(/["'”»’‘>]+$/, '').trim();
+  }
+  
+  return trimmed;
 }
 
 // Helper functions to prevent broken embeds
@@ -39,26 +56,6 @@ function extractYoutubeId(input: string): string {
   return trimmed;
 }
 
-function sanitizeSlidesUrl(input: string): string {
-  if (!input) return '';
-  let url = input.trim();
-  
-  // If they pasted an iframe embed code, extract the src attribute
-  const iframeMatch = url.match(/src=["'](https:\/\/docs\.google\.com\/presentation\/d\/[a-zA-Z0-9_-]+\/[^"']+)["']/i);
-  if (iframeMatch) {
-    url = iframeMatch[1];
-  }
-  
-  // Ensure the URL points to /embed and contains the correct presentation prefix
-  const idMatch = url.match(/https:\/\/docs\.google\.com\/presentation\/d\/([a-zA-Z0-9_-]+)/);
-  if (idMatch) {
-    const presentationId = idMatch[1];
-    return `https://docs.google.com/presentation/d/${presentationId}/embed`;
-  }
-  
-  return url;
-}
-
 export default function ClassModal({
   isOpen,
   onClose,
@@ -75,9 +72,14 @@ export default function ClassModal({
   const [slidesUrl, setSlidesUrl] = useState('');
   const [actTitle, setActTitle] = useState('');
   const [actDesc, setActDesc] = useState('');
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'content' | 'video' | 'slides' | 'activity'>('content');
 
   // Rellenar datos si estamos editando
   useEffect(() => {
+    setIsPreviewOpen(false);
+    setPreviewTab('content');
+
     if (initialClass) {
       setLevel(initialClass.level);
       setWeek(initialClass.week);
@@ -174,7 +176,7 @@ export default function ClassModal({
       deadline,
       text: htmlText || `<p>${text}</p>`,
       videoId: extractedId,
-      slidesUrl: sanitizeSlidesUrl(slidesUrl),
+      slidesUrl: slidesUrl.trim(),
       actTitle: actTitle.trim(),
       actDesc: actDesc.trim(),
     };
@@ -318,17 +320,17 @@ export default function ClassModal({
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
-                Embed de Google Slides URL o Código
+                Presentación o Slides (Gamma, Google Slides, Canva, Enlace o Código Iframe)
               </label>
-              <input
-                type="text"
+              <textarea
                 value={slidesUrl}
                 onChange={(e) => setSlidesUrl(e.target.value)}
-                placeholder="https://docs.google.com/presentation/d/.../embed"
-                className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 placeholder-gray-550 light:placeholder-neutral-400 text-xs focus:outline-none focus:border-violet-500"
+                placeholder='ej: <iframe src="https://gamma.app/embed/..." ...></iframe> o https://...'
+                rows={2}
+                className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2 text-white light:text-neutral-800 placeholder-gray-500 light:placeholder-neutral-400 text-xs focus:outline-none focus:border-violet-500 resize-none font-mono"
               />
               <span className="text-[9px] text-[#8e8ea4] light:text-[#717188] italic block">
-                Pega el enlace de la presentación o el código iframe completo. Se auto-sanea al guardar.
+                Pega el código iframe completo de Gamma/Canva o el link de Google Slides. Se extraerá y auto-saneará automáticamente al guardar.
               </span>
             </div>
           </div>
@@ -382,23 +384,262 @@ export default function ClassModal({
         </form>
 
         {/* Footer actions of modal */}
-        <div className="bg-white/2 light:bg-neutral-50 border-t border-gray-850 light:border-neutral-200 p-6 flex justify-end gap-3 shrink-0">
+        <div className="bg-white/2 light:bg-neutral-50 border-t border-gray-850 light:border-neutral-200 p-6 flex justify-between items-center gap-3 shrink-0">
           <button
             type="button"
-            onClick={onClose}
-            className="px-5 py-2.5 bg-white/5 light:bg-neutral-100 hover:bg-white/10 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white light:hover:text-neutral-900 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+            onClick={() => setIsPreviewOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-neutral-900 hover:bg-neutral-800 text-gray-300 hover:text-white border border-white/10 hover:border-white/20 light:bg-neutral-100 light:hover:bg-neutral-200 light:text-neutral-700 light:hover:text-neutral-900 light:border-neutral-200 rounded-xl text-sm font-semibold transition-colors cursor-pointer mr-auto"
           >
-            Cancelar
+            <Eye className="w-4 h-4 text-violet-400 light:text-violet-600" />
+            <span>Vista previa</span>
           </button>
-          <button
-            onClick={handleSubmit}
-            className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-lg shadow-violet-950/20 light:shadow-violet-600/15 transform active:scale-95 transition-all"
-          >
-            <Save className="w-4 h-4" />
-            <span>Guardar clase</span>
-          </button>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 bg-white/5 light:bg-neutral-100 hover:bg-white/10 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white light:hover:text-neutral-900 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleSubmit}
+              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-lg shadow-violet-950/20 light:shadow-violet-600/15 transform active:scale-95 transition-all"
+            >
+              <Save className="w-4 h-4" />
+              <span>Guardar clase</span>
+            </button>
+          </div>
         </div>
       </motion.div>
+
+      <AnimatePresence>
+        {isPreviewOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-120 bg-[#070714] light:bg-white flex flex-col justify-start overflow-y-auto no-scrollbar p-6 sm:p-12"
+          >
+            {/* Banner/Header of Preview */}
+            <div className="max-w-4xl w-full mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-white/10 light:border-neutral-200 pb-5 mb-8">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(false)}
+                  className="flex items-center gap-1.5 group text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800 text-xs font-semibold transition-colors cursor-pointer bg-white/5 light:bg-neutral-100 px-3 py-1.5 rounded-lg border border-white/5 light:border-neutral-200"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
+                  <span>Volver a Editar</span>
+                </button>
+                <div className="flex items-center gap-2 px-3 py-1 bg-violet-500/10 border border-violet-500/30 rounded-full animate-pulse">
+                  <span className="w-1.5 h-1.5 bg-violet-400 rounded-full" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400 font-mono">Modo Vista Previa</span>
+                </div>
+              </div>
+              <span className="text-xs text-gray-400 light:text-neutral-500 font-medium italic">
+                Así es exactamente como los alumnos visualizarán la clase.
+              </span>
+            </div>
+
+            {/* Simulated ClassView Container */}
+            <div className="max-w-4xl w-full mx-auto">
+              {/* Class Header */}
+              <div className="mb-8 border-b border-white/5 light:border-neutral-200 pb-5">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-violet-400 light:text-violet-600 font-mono">
+                  Semana {week || 1} · Nivel {level}
+                </span>
+                <h1 className="font-sans text-xl sm:text-2xl font-semibold tracking-tight text-white light:text-neutral-950 mt-1">
+                  {title || 'Nueva clase sin título'}
+                </h1>
+              </div>
+
+              {/* Tabs Navigation (Exact replica of ClassView) */}
+              <div className="flex bg-neutral-900/60 light:bg-neutral-100 p-1 rounded-xl border border-white/5 light:border-neutral-200 mb-8 overflow-x-auto no-scrollbar scroll-smooth self-start max-w-max">
+                {(
+                  [
+                    { id: 'content', label: '📖 Contenido', icon: BookOpen },
+                    { id: 'video', label: '🎥 Video', icon: Video },
+                    { id: 'slides', label: '📊 Diapositivas', icon: Presentation },
+                    { id: 'activity', label: '✏️ Actividad', icon: FilePenLine },
+                  ] as const
+                ).map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = previewTab === tab.id;
+
+                  return (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setPreviewTab(tab.id)}
+                      className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer border ${
+                        isActive
+                          ? 'bg-violet-600 border-violet-500 text-white shadow-sm shadow-violet-950/10 light:bg-violet-100 light:border-violet-200 light:text-violet-700'
+                          : 'border-transparent text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      <span>{tab.label.split(' ')[1]}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Tab views with transitions */}
+              <div className="min-h-[300px]">
+                {previewTab === 'content' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="prose prose-invert light:prose-neutral max-w-none text-gray-300 light:text-neutral-800 leading-relaxed space-y-4"
+                  >
+                    <div 
+                      className="class-body-html"
+                      dangerouslySetInnerHTML={{ 
+                        __html: (() => {
+                          let htmlText = text.trim();
+                          if (htmlText) {
+                            htmlText = htmlText.replace(/### (.*?)\n/g, '<h3>$1</h3>');
+                            htmlText = htmlText.replace(/\* (.*?)\n/g, '<li>$1</li>');
+                            htmlText = htmlText
+                              .split('\n\n')
+                              .map((p) => {
+                                if (p.startsWith('<h3>') || p.startsWith('<li>')) return p;
+                                if (p.includes('<li>')) return `<ul>${p}</ul>`;
+                                return `<p>${p.replace(/\n/g, '<br>')}</p>`;
+                              })
+                              .join('');
+                          }
+                          return htmlText || `<p>${text || 'No hay texto redactado todavía.'}</p>`;
+                        })()
+                      }}
+                    />
+                  </motion.div>
+                )}
+
+                {previewTab === 'video' && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="w-full"
+                  >
+                    {videoId.trim() ? (
+                      <div className="relative aspect-video rounded-2xl border border-white/5 light:border-neutral-200 overflow-hidden bg-black/40 light:bg-neutral-50">
+                        <iframe
+                          title="Youtube embed code"
+                          src={`https://www.youtube.com/embed/${extractYoutubeId(videoId.trim())}`}
+                          allowFullScreen
+                          className="absolute top-0 left-0 w-full h-full border-0"
+                        />
+                      </div>
+                    ) : (
+                      <div className="aspect-video rounded-2xl border border-white/5 light:border-neutral-200/80 flex flex-col items-center justify-center text-center p-6 bg-neutral-950/40 light:bg-neutral-50">
+                        <div className="w-10 h-10 rounded-xl bg-violet-600/10 flex items-center justify-center text-violet-400 light:text-violet-600 mb-3 animate-pulse">
+                          <Video className="w-4 h-4" />
+                        </div>
+                        <h3 className="font-sans font-semibold text-white light:text-neutral-800 text-sm mb-1">
+                          Video en producción o no ingresado
+                        </h3>
+                        <p className="text-gray-500 light:text-neutral-500 text-xs max-w-xs">
+                          Al vincular un link correcto de YouTube, acá se visualizará el video de la clase.
+                        </p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                {previewTab === 'slides' && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="w-full"
+                  >
+                    {slidesUrl.trim() ? (
+                      <div className="rounded-2xl border border-white/5 light:border-neutral-300 overflow-hidden bg-[#070714] light:bg-[#fbfbfb] shadow-xl relative">
+                        <iframe
+                          title="Presentación de la clase"
+                          src={getEmbedUrl(slidesUrl)}
+                          className="w-full h-[320px] sm:h-[480px] border-0"
+                          allow="fullscreen"
+                          allowFullScreen
+                        />
+                      </div>
+                    ) : (
+                      <div className="h-[300px] rounded-2xl border border-white/5 light:border-neutral-200/80 flex flex-col items-center justify-center text-center p-6 bg-neutral-950/40 light:bg-neutral-50">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-400 light:text-indigo-600 mb-3">
+                          <Presentation className="w-4 h-4" />
+                        </div>
+                        <h3 className="font-sans font-semibold text-white light:text-neutral-800 text-sm mb-1">
+                          No vinculaste diapositivas todavía
+                        </h3>
+                        <p className="text-gray-500 light:text-neutral-500 text-xs max-w-xs">
+                          Al pegar el código iframe de Gamma, acá se cargará de forma interactiva y responsiva.
+                        </p>
+                      </div>
+                    )}
+                  </motion.div>
+                )}
+
+                {previewTab === 'activity' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-violet-950/10 border border-violet-900/40 light:bg-violet-50/40 light:border-violet-200/60 rounded-3xl p-6 sm:p-8"
+                  >
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-[#818cf8]">
+                      Entrega Obligatoria semanal
+                    </span>
+                    <h3 className="font-display text-lg sm:text-xl font-bold text-white light:text-neutral-900 mt-1 mb-3">
+                      {actTitle || 'Actividad práctica (Sin título redactado)'}
+                    </h3>
+                    <p className="text-gray-400 light:text-neutral-700 text-sm leading-relaxed mb-6">
+                      {actDesc || 'Acá aparecerá la consigna de la actividad para que el alumno la resuelva.'}
+                    </p>
+
+                    {/* Deadline simulated badge */}
+                    {deadline && (
+                      <div className="flex items-center gap-2 text-xs font-semibold p-3.5 rounded-xl border bg-yellow-950/14 border-yellow-500/25 text-yellow-300 light:bg-amber-50 light:border-amber-200/70 light:text-amber-800 mb-6">
+                        <CalendarDays className="w-4 h-4 shrink-0" />
+                        <span>Plazo de entrega válido hasta: {(() => {
+                          const d = new Date(deadline);
+                          return d.toLocaleDateString('es-AR', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          });
+                        })()}</span>
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs text-gray-400 light:text-neutral-500 font-bold uppercase tracking-wider block">
+                          Tu respuesta o conclusión (Simulador de entrega)
+                        </label>
+                        <textarea
+                          placeholder="Escribe tu respuesta aquí para probar el textarea..."
+                          className="w-full min-h-[140px] bg-black/20 border border-white/10 light:bg-white light:border-neutral-300 rounded-2xl p-4 text-white light:text-neutral-800 placeholder-gray-500 light:placeholder-neutral-400 font-sans text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors"
+                        />
+                      </div>
+
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          className="py-3 px-6 bg-gradient-to-r from-violet-600 to-indigo-600 opacity-60 text-white font-semibold text-sm rounded-xl cursor-not-allowed select-none"
+                        >
+                          Entregar actividad (Simulado)
+                        </button>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
