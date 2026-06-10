@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { BookOpen, Lock, CheckCircle, Calendar, Sparkles, AlertCircle } from 'lucide-react';
+import { BookOpen, Lock, CheckCircle, Calendar, Sparkles, AlertCircle, Search, CheckCircle2 } from 'lucide-react';
 import { Course, ClassItem, User, ActivitySubmission } from '../types';
 import { COURSES } from '../data';
 
@@ -20,6 +20,8 @@ export default function StudentDashboard({
   const activeLevel = user.level ?? 0;
   const [selectedCourseId] = useState<number>(activeLevel);
   const weeksSectionRef = useRef<HTMLDivElement | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'completed'>('all');
 
   const getCourseProgress = (courseId: number) => {
     // Calculamos cuántas clases desbloqueadas del curso existen y pertenecen al colegio del alumno
@@ -62,9 +64,34 @@ export default function StudentDashboard({
   };
 
   const selectedCourse = COURSES.find((c) => c.id === selectedCourseId);
-  const filteredClasses = classes
+  
+  const initialFilteredClasses = classes
     .filter((cl) => cl.level === selectedCourseId && cl.school === user.school && !cl.isSyllabus)
     .sort((a, b) => a.week - b.week);
+
+  const filteredClasses = initialFilteredClasses.filter((cl) => {
+    // 1. Status Filter
+    const ok = isUnlocked(cl);
+    const submitted = hasSubmitted(cl);
+    if (statusFilter === 'pending') {
+      if (!ok || submitted) return false;
+    } else if (statusFilter === 'completed') {
+      if (!submitted) return false;
+    }
+
+    // 2. Search Query Filter
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      const titleMatch = cl.title.toLowerCase().includes(q);
+      const textMatch = cl.text?.toLowerCase().includes(q) ?? false;
+      const actTitleMatch = cl.actTitle?.toLowerCase().includes(q) ?? false;
+      const actDescMatch = cl.actDesc?.toLowerCase().includes(q) ?? false;
+      const weekMatch = `semana ${cl.week}`.includes(q) || `semana:${cl.week}`.includes(q) || cl.week.toString() === q;
+      return titleMatch || textMatch || actTitleMatch || actDescMatch || weekMatch;
+    }
+
+    return true;
+  });
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
@@ -173,6 +200,67 @@ export default function StudentDashboard({
                 </span>
               </div>
 
+              {/* Barra de Búsqueda y Filtros con diseño de alta fidelidad */}
+              <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between py-2 mb-2">
+                {/* Input de Búsqueda */}
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 light:text-neutral-500" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Buscar por tema, semana o consigna..."
+                    className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl pl-10 pr-16 py-2.5 text-xs text-white light:text-neutral-800 placeholder-gray-500 light:placeholder-neutral-400 focus:outline-none focus:border-violet-500 light:focus:border-violet-500 transition-all font-sans"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-300 hover:text-white light:text-neutral-500 light:hover:text-neutral-950 font-semibold bg-white/10 hover:bg-white/20 light:bg-neutral-100 light:hover:bg-neutral-200 px-2.0 py-1 rounded transition-colors"
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+
+                {/* Filtros de Estado */}
+                <div className="flex bg-neutral-900/60 light:bg-neutral-100 p-1 rounded-xl border border-white/5 light:border-neutral-200 self-start md:self-auto text-xs shrink-0 select-none">
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                      statusFilter === 'all'
+                        ? 'bg-violet-600 border-violet-500/20 text-white shadow-sm light:bg-violet-100 light:border-violet-200 light:text-violet-700'
+                        : 'text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
+                    }`}
+                  >
+                    Todas ({initialFilteredClasses.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('pending')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                      statusFilter === 'pending'
+                        ? 'bg-violet-600 border-violet-500/20 text-white shadow-sm light:bg-violet-100 light:border-violet-200 light:text-violet-700'
+                        : 'text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
+                    }`}
+                  >
+                    Disponibles ({initialFilteredClasses.filter(c => isUnlocked(c) && !hasSubmitted(c)).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setStatusFilter('completed')}
+                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                      statusFilter === 'completed'
+                        ? 'bg-violet-600 border-violet-500/20 text-white shadow-sm light:bg-violet-100 light:border-violet-200 light:text-violet-700'
+                        : 'text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
+                    }`}
+                  >
+                    Entregadas ({initialFilteredClasses.filter(c => isUnlocked(c) && hasSubmitted(c)).length})
+                  </button>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 {filteredClasses.length > 0 ? (
                   filteredClasses.map((cl) => {
@@ -236,7 +324,31 @@ export default function StudentDashboard({
                       </div>
                     );
                   })
+                ) : initialFilteredClasses.length > 0 ? (
+                  /* Empty state for search filters */
+                  <div className="relative overflow-hidden bg-neutral-900/10 border border-dashed border-white/10 light:bg-neutral-50 light:border-neutral-200/80 rounded-2xl py-10 px-6 text-center select-none flex flex-col items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-violet-600/10 flex items-center justify-center mb-3 text-violet-400 light:text-violet-600">
+                      <Search className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <h4 className="font-sans font-bold text-sm text-white light:text-neutral-800">
+                      Sin resultados para la búsqueda
+                    </h4>
+                    <p className="text-gray-400 light:text-neutral-500 text-xs mt-1 max-w-xs leading-relaxed font-sans mb-4">
+                      No encontramos ninguna clase que coincida con tus términos o filtros seleccionados.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchQuery('');
+                        setStatusFilter('all');
+                      }}
+                      className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs rounded-lg transition-all shadow-md shadow-violet-950/20 cursor-pointer"
+                    >
+                      Restablecer filtros
+                    </button>
+                  </div>
                 ) : (
+                  /* Original total empty state */
                   <div className="relative overflow-hidden bg-neutral-900/10 border border-dashed border-white/10 dark:bg-black/10 light:bg-neutral-50 light:border-neutral-200/80 rounded-2xl py-12 px-6 text-center select-none flex flex-col items-center justify-center">
                     {/* Glowing circular illustration */}
                     <div className="relative w-16 h-16 rounded-full bg-violet-600/10 flex items-center justify-center mb-4 border border-violet-500/20 shadow-inner">

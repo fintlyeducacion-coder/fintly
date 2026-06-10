@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, BookOpen, Trash2, Users, AlertTriangle, School, ChevronRight, ArrowLeft, CheckCircle2, Clock, FileText, Loader2,
-  Mail, ExternalLink, Sparkles
+  Mail, ExternalLink, Sparkles, Search, Bell, Calendar, ChevronDown, Check, UserPlus
 } from 'lucide-react';
 import { ClassItem, Student, ActivitySubmission } from '../types';
 import ClassModal from './ClassModal';
@@ -37,11 +37,14 @@ export default function AdminPanel({
   onApproveUser,
   onDeleteUser
 }: AdminPanelProps) {
-  const [activeTab, setActiveTab] = useState<'colegios' | 'clases' | 'usuarios'>('colegios');
+  const [activeTab, setActiveTab] = useState<'colegios' | 'rendimiento' | 'clases' | 'usuarios'>('colegios');
   const [activeSchool, setActiveSchool] = useState<string | null>(null);
   const [activeLevel, setActiveLevel] = useState<number | null>(null);
   const [expandedStudentEmail, setExpandedStudentEmail] = useState<string | null>(null);
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [performanceStatusFilter, setPerformanceStatusFilter] = useState<'all' | 'warn' | 'ok'>('all');
+  const [bellNotification, setBellNotification] = useState<{ studentName: string; email: string } | null>(null);
+  const [expandedSchool, setExpandedSchool] = useState<string | null>(null);
   
   // Clear search query dynamically when shifting views
   useEffect(() => {
@@ -403,7 +406,7 @@ export default function AdminPanel({
         </div>
 
         {/* Seamless Navigation Tab */}
-        <div className="flex bg-neutral-900/60 light:bg-white p-1 rounded-lg border border-white/5 light:border-neutral-200 self-start">
+        <div className="flex flex-wrap bg-neutral-900/60 light:bg-white p-1 rounded-lg border border-white/5 light:border-neutral-200 self-start gap-1">
           <button
             onClick={() => {
               setActiveTab('colegios');
@@ -412,19 +415,33 @@ export default function AdminPanel({
             }}
             className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer ${
               activeTab === 'colegios'
-                ? 'bg-violet-600/90 text-white'
+                ? 'bg-violet-600/90 text-white shadow'
                 : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
             }`}
           >
             Colegios
           </button>
+
+          <button
+            onClick={() => {
+              setActiveTab('rendimiento');
+            }}
+            className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer ${
+              activeTab === 'rendimiento'
+                ? 'bg-violet-600/90 text-white shadow'
+                : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+            }`}
+          >
+            Rendimiento Estudiantil
+          </button>
+
           <button
             onClick={() => {
               setActiveTab('clases');
             }}
             className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer ${
               activeTab === 'clases'
-                ? 'bg-violet-600/90 text-white'
+                ? 'bg-violet-600/90 text-white shadow'
                 : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
             }`}
           >
@@ -437,7 +454,7 @@ export default function AdminPanel({
             }}
             className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'usuarios'
-                ? 'bg-violet-600/90 text-white'
+                ? 'bg-violet-600/90 text-white shadow'
                 : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
             }`}
           >
@@ -460,77 +477,260 @@ export default function AdminPanel({
             transition={{ duration: 0.15 }}
             className="space-y-6"
           >
-            {/* 1. SEAMLESS SCHOOLS GRID WITH ACTION */}
+            {/* 1. SEAMLESS SCHOOLS VERTICAL WORKSPACE WITH DIRECT LEVEL ACTIONS AND NEXT CLASS PREVIEW */}
             {activeSchool === null && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between pb-1">
-                  <h3 className="font-sans text-xs font-bold tracking-widest text-[#5e5e6e] uppercase">Colegios Asociados</h3>
+              <div className="space-y-6">
+                {/* Metrics ribbon for administrators */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 bg-neutral-900/20 light:bg-neutral-50/50 p-4 border border-white/5 light:border-neutral-200/60 rounded-2xl">
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-wider font-mono font-bold">Colegios</span>
+                    <p className="text-xl font-bold text-white light:text-neutral-900 font-mono">{ASSOCIATED_SCHOOLS.length}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-400 light:text-neutral-550 uppercase tracking-wider font-mono font-bold">Alumnos Activos</span>
+                    <p className="text-xl font-bold text-violet-400 light:text-violet-600 font-mono">{totalStudentsCount}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-400 light:text-neutral-550 uppercase tracking-wider font-mono font-bold">Respuesta Media</span>
+                    <p className="text-xl font-bold text-emerald-400 light:text-emerald-600 font-mono">{submissionRatePct}%</p>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="text-[10px] text-gray-400 light:text-neutral-550 uppercase tracking-wider font-mono font-bold">Clases Publicadas</span>
+                    <p className="text-xl font-bold text-indigo-400 light:text-indigo-600 font-mono">
+                      {classes.filter(cl => !cl.isSyllabus).length}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-gray-500 tracking-widest font-mono">Panel Académico</span>
+                    <h3 className="text-base font-bold text-white light:text-neutral-800 tracking-tight">Monitoreo de Colegios e Habilitaciones Semanales</h3>
+                  </div>
                   <button
                     onClick={handleCreateStudentClick}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-md text-xs font-semibold cursor-pointer transition-colors shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold cursor-pointer transition-colors shadow-lg shadow-violet-600/10"
                   >
-                    <Plus className="w-3.5 h-3.5" />
+                    <UserPlus className="w-4 h-4" />
                     <span>Invitar Alumno</span>
                   </button>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div className="space-y-4">
                   {ASSOCIATED_SCHOOLS.map((school) => {
                     const stats = getSchoolStats(school);
+                    const isExpanded = expandedSchool === school;
+
                     return (
-                      <motion.div
+                      <div
                         key={school}
-                        whileHover={{ scale: 1.005 }}
-                        className="bg-neutral-950/40 hover:bg-neutral-900/35 light:bg-white light:hover:bg-neutral-50 border border-white/5 light:border-neutral-200 rounded-xl p-5 transition-all cursor-pointer flex flex-col justify-between shadow-sm"
-                        onClick={() => {
-                          setActiveSchool(school);
-                          setActiveLevel(null);
-                        }}
+                        className="bg-neutral-950/40 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl shadow-sm overflow-hidden transition-all"
                       >
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <h2 className="font-semibold text-white light:text-neutral-800 tracking-tight text-sm sm:text-base">
-                              {school}
-                            </h2>
-                            <span className="text-[10px] text-gray-400 light:text-neutral-500 font-medium font-mono">
-                              {stats.studentCount} alumn{stats.studentCount === 1 ? 'o' : 'os'}
-                            </span>
-                          </div>
-
-                          {/* Minimalist Levels Badges */}
-                          <div className="flex flex-wrap gap-1.5">
-                            {stats.levels.length > 0 ? (
-                              stats.levels.map((lvl) => (
-                                <span
-                                  key={lvl}
-                                  className="px-2 py-0.5 rounded bg-violet-950/40 border border-violet-900/10 text-violet-300 light:bg-violet-50 light:border-violet-200 light:text-violet-600 text-[10px] font-medium font-mono"
-                                >
-                                  Nivel {lvl}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-[10px] text-gray-500 italic">Niveles inactivos</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Micro Progress bar for activities */}
-                        <div className="mt-6 pt-4 border-t border-white/5 light:border-neutral-200 flex items-center justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="w-full h-1 bg-white/[0.03] light:bg-neutral-100 rounded-full overflow-hidden">
-                              <div
-                                className="h-full bg-violet-500/80 light:bg-violet-600"
-                                style={{ width: `${stats.completionRate}%` }}
-                              />
+                        {/* School Header / Toggle Row */}
+                        <div
+                          onClick={() => {
+                            setExpandedSchool(isExpanded ? null : school);
+                          }}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 cursor-pointer hover:bg-neutral-900/10 light:hover:bg-neutral-50/40 transition-colors select-none"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-violet-950/40 border border-violet-500/10 light:bg-violet-50 light:border-violet-100 flex items-center justify-center text-violet-400 light:text-violet-650 shrink-0">
+                              <School className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <h2 className="font-bold text-white light:text-neutral-900 tracking-tight text-base">
+                                {school}
+                              </h2>
+                              <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 font-medium">
+                                <span className="font-mono">{stats.studentCount} alumnos registrados</span>
+                                <span>•</span>
+                                <span className="text-violet-400 light:text-violet-605 font-mono font-bold">{stats.completionRate}% de avance general</span>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1.5 text-xs font-semibold text-violet-400 light:text-violet-600 hover:text-white light:hover:text-violet-700 transition-colors shrink-0">
-                            <span className="text-[11px] font-mono font-medium">{stats.completionRate}% completado</span>
-                            <ChevronRight className="w-3.5 h-3.5" />
+
+                          <div className="flex items-center gap-2.5 self-start sm:self-auto">
+                            {/* Ver Alumnos direct button */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedSchool(isExpanded ? null : school);
+                              }}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all inline-flex items-center gap-1.5 shadow-sm border ${
+                                isExpanded
+                                  ? 'bg-violet-650 text-white border-violet-600'
+                                  : 'bg-neutral-900/60 hover:bg-neutral-850 text-gray-300 border-white/5 hover:text-white light:bg-neutral-100 light:text-neutral-700 light:border-neutral-200 light:hover:bg-neutral-200/80 light:hover:text-black'
+                              }`}
+                            >
+                              <Users className="w-3.5 h-3.5" />
+                              <span>Alumnos</span>
+                            </button>
+
+                            {/* Divider line style */}
+                            <div className="h-4 w-[1px] bg-white/10 light:bg-neutral-250 mx-0.5 hidden sm:block" />
+
+                            {isExpanded ? (
+                              <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-violet-400 light:text-violet-600 bg-violet-500/10 px-2.5 py-1 rounded-md">
+                                Ocultar Niveles
+                              </span>
+                            ) : (
+                              <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-gray-400 light:text-neutral-550 bg-neutral-900/30 light:bg-neutral-100 px-2.5 py-1 rounded-md">
+                                Expandir
+                              </span>
+                            )}
+                            <ChevronDown
+                              className={`w-4 h-4 text-gray-400 light:text-neutral-550 transition-transform duration-300 ${
+                                isExpanded ? 'rotate-180 text-violet-400 light:text-violet-600' : ''
+                              }`}
+                            />
                           </div>
                         </div>
-                      </motion.div>
-                    );
-                  })}
+
+                        {/* Expandable Section with details */}
+                        {isExpanded && (
+                          <div className="border-t border-white/5 light:border-neutral-100 p-6 pt-5 bg-neutral-950/20 light:bg-neutral-50/20 animate-fade-in space-y-4">
+                            {/* Table header with clean title */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/5 light:border-neutral-100 pb-3.5 mb-4 gap-3">
+                              <div className="text-[10.5px] uppercase font-mono font-bold text-violet-400 light:text-violet-600 tracking-widest">
+                                Monitoreo de Niveles
+                              </div>
+                              <div className="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest sm:text-right">
+                                Syllabus y Habilitaciones
+                              </div>
+                            </div>
+
+                            {/* MAIN LEVELS TABLE (Original view) */}
+                              <div className="overflow-hidden overflow-x-auto shadow-inner rounded-xl">
+                                <table className="w-full text-left border-collapse min-w-[600px]">
+                                  <thead>
+                                    <tr className="border-b border-white/[0.03] light:border-neutral-150 bg-neutral-950/20 text-gray-500 text-[9px] tracking-wider font-bold uppercase font-mono">
+                                      <th className="px-3 py-2">Nivel</th>
+                                      <th className="px-3 py-2">Alumnos</th>
+                                      <th className="px-3 py-2">Clases Subidas</th>
+                                      <th className="px-3 py-2">Próxima Clase Programada</th>
+                                      <th className="px-3 py-2 text-right">Acciones Directas</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {[0, 1, 2, 3].map((lvl) => {
+                                      const levelStudents = stats.students.filter((st) => st.level === lvl);
+                                      const course = COURSES.find((c) => c.id === lvl) || { name: `Nivel ${lvl}` };
+                                      
+                                      // Calculamos clases asignadas de este nivel a este colegio
+                                      const assignedClasses = classes.filter(
+                                        cl => cl.level === lvl && cl.school?.toLowerCase() === school.toLowerCase() && !cl.isSyllabus
+                                      );
+                                      const maxWeekPub = assignedClasses.length > 0 
+                                        ? Math.max(...assignedClasses.map(cl => cl.week)) 
+                                        : 0;
+
+                                      // Buscamos en el syllabus master la proxima clase modelo 
+                                      const nextWeekNum = maxWeekPub + 1;
+                                      const nextSyllabusClass = classes.find(
+                                        cl => cl.isSyllabus && cl.level === lvl && cl.week === nextWeekNum
+                                      );
+
+                                      return (
+                                        <tr 
+                                          key={lvl} 
+                                          className="border-b border-white/[0.02] light:border-neutral-100 text-xs text-gray-300 light:text-neutral-700 hover:bg-white/[0.01] light:hover:bg-neutral-50/50 transition-colors"
+                                        >
+                                          {/* Nivel info */}
+                                          <td className="px-3 py-3 font-sans">
+                                            <span className="font-bold text-violet-400 light:text-violet-600 font-mono mr-1.5">[Nivel {lvl}]</span>
+                                            <span className="text-white light:text-neutral-800 font-medium">{course.name}</span>
+                                          </td>
+
+                                          {/* Cantidad Alumnos */}
+                                          <td className="px-3 py-3">
+                                            {levelStudents.length > 0 ? (
+                                              <span className="px-2 py-0.5 rounded-full bg-violet-950/40 border border-violet-500/20 text-violet-400 light:bg-violet-50 light:text-violet-600 text-[10px] font-semibold font-mono">
+                                                {levelStudents.length} alumn{levelStudents.length === 1 ? 'o' : 'os'}
+                                              </span>
+                                            ) : (
+                                              <span className="text-gray-600 light:text-neutral-400 italic text-[10.5px]">Ninguno</span>
+                                            )}
+                                          </td>
+
+                                          {/* Clases subidas */}
+                                          <td className="px-3 py-3 font-mono text-[11px] text-gray-400 light:text-neutral-550">
+                                            {assignedClasses.length > 0 ? (
+                                              <div className="flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>Semana {maxWeekPub} activa</span>
+                                              </div>
+                                            ) : (
+                                              <span className="text-gray-500 italic">Ninguna clase activa</span>
+                                            )}
+                                          </td>
+
+                                          {/* Visual unlocking assistant (próxima clase) */}
+                                          <td className="px-3 py-3">
+                                            {nextSyllabusClass ? (
+                                              <div className="space-y-0.5">
+                                                <div className="text-white light:text-neutral-800 font-medium line-clamp-1">
+                                                  Semana {nextWeekNum}: {nextSyllabusClass.title}
+                                                </div>
+                                                <span className="text-[9.5px] uppercase font-bold text-amber-500 font-mono tracking-wider flex items-center gap-1">
+                                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                  Falta Programar
+                                                </span>
+                                              </div>
+                                            ) : (
+                                              <span className="text-emerald-500 font-semibold flex items-center gap-1 font-sans text-[11px]">
+                                                ✓ Al día con el Syllabus
+                                              </span>
+                                            )}
+                                          </td>
+
+                                          {/* Direct Action Buttons */}
+                                          <td className="px-3 py-3 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              {/* Monitor grades and students */}
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setActiveSchool(school);
+                                                  setActiveLevel(lvl);
+                                                }}
+                                                className="px-2.5 py-1.5 bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-gray-300 rounded-lg text-[11px] font-semibold transition-all cursor-pointer light:bg-neutral-100 light:text-neutral-700 light:border-neutral-200 light:hover:bg-neutral-200 inline-flex items-center gap-1"
+                                              >
+                                                <span>Monitorear</span>
+                                                <ChevronRight className="w-3 h-3 text-gray-500" />
+                                              </button>
+
+                                              {/* Quick release content model */}
+                                              {nextSyllabusClass && (
+                                                <button
+                                                  type="button"
+                                                  onClick={() => {
+                                                    setClassToAssign(nextSyllabusClass);
+                                                    setAssignSelectedSchools([school]);
+                                                    setAssignUnlockAt(new Date().toISOString().substring(0, 16));
+                                                    setAssignDeadline(new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
+                                                    setAssignModalOpen(true);
+                                                  }}
+                                                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-[11px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-1 shadow shadow-violet-600/10"
+                                                  title="Planificar y subir la siguiente clase del Syllabus"
+                                                >
+                                                  <Plus className="w-3.5 h-3.5" />
+                                                  <span>Subir Semana {nextWeekNum}</span>
+                                                </button>
+                                              )}
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             )}
@@ -887,9 +1087,384 @@ export default function AdminPanel({
                     </div>
                   )}
                 </div>
-
               </div>
             )}
+          </motion.div>
+        ) : activeTab === 'rendimiento' ? (
+          /* REGISTRO Y MONITOREO DE RENDIMIENTO ESTUDIANTIL */
+          <motion.div
+            key="performance-tab"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-6"
+          >
+            {(() => {
+              // Preprocess and dynamically enrich students
+              const enrichedStudents = students.map(student => {
+                const studentEmail = student.email || '';
+                
+                // Entregas reales del estudiante
+                const studentSubmissions = submissions.filter(
+                  sub => sub.studentEmail.toLowerCase() === studentEmail.toLowerCase()
+                );
+                const completedWeeks = studentSubmissions.map(sub => sub.classWeek);
+
+                // Clases reales asignadas de su nivel a su colegio
+                const activeCohortClasses = classes.filter(
+                  cl => cl.level === student.level && cl.school?.toLowerCase() === student.school?.toLowerCase() && !cl.isSyllabus
+                );
+
+                const maxWeekInCohort = activeCohortClasses.length > 0
+                  ? Math.max(...activeCohortClasses.map(cl => cl.week))
+                  : 0;
+
+                // Desafíos faltantes
+                const missingChallenges = activeCohortClasses
+                  .filter(cl => !completedWeeks.includes(cl.week))
+                  .sort((a, b) => a.week - b.week);
+
+                // Determinar si hay urgencia (si un desafío pendiente es el último de todos y está dentro del plazo de entrega)
+                const urgentMissingChallenges = missingChallenges.filter(cl => {
+                  const isLast = cl.week === maxWeekInCohort;
+                  if (isLast) {
+                    if (!cl.deadline) return true;
+                    const dlDate = new Date(cl.deadline);
+                    const withinDeadline = dlDate.getTime() >= Date.now();
+                    return !withinDeadline; // Es urgente si la fecha límite YA pasó
+                  }
+                  return true; // Si no es la última tarea, siempre es urgente/atrasada
+                });
+
+                const dynamicIsAtrasado = urgentMissingChallenges.length > 0;
+                const computedStatus = dynamicIsAtrasado ? 'warn' : 'ok';
+
+                const completionRate = activeCohortClasses.length > 0
+                  ? Math.round((studentSubmissions.length / activeCohortClasses.length) * 100)
+                  : 0;
+
+                return {
+                  ...student,
+                  computedStatus,
+                  missingChallenges,
+                  urgentMissingChallenges,
+                  studentSubmissions,
+                  activeCohortClasses,
+                  completionRate
+                };
+              });
+
+              const totalWarnStudents = enrichedStudents.filter(s => s.computedStatus === 'warn').length;
+              const totalOkStudents = enrichedStudents.filter(s => s.computedStatus === 'ok').length;
+
+              return (
+                <>
+                  {/* Notifications overlay if bell clicked */}
+                  {bellNotification && (
+                    <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl text-yellow-300 text-xs flex justify-between items-center animate-fade-in font-sans">
+                      <div className="flex items-center gap-2">
+                        <Bell className="w-4 h-4 text-yellow-500 animate-bounce" />
+                        <span>
+                          <strong>Alerta de recordatorio enviada:</strong> Se ha notificado exitosamente a <strong>{bellNotification.studentName}</strong> ({bellNotification.email}) para que complete y entregue sus desafíos financieros pendientes.
+                        </span>
+                      </div>
+                      <button 
+                        onClick={() => setBellNotification(null)}
+                        className="font-bold hover:text-white px-2 cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-white/5 light:border-neutral-200">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider font-mono">Control de entregas</span>
+                      <h2 className="text-lg font-medium text-white light:text-neutral-900 tracking-tight mt-0.5 font-sans animate-fade-in">
+                        Rendimiento Estudiantil
+                      </h2>
+                    </div>
+                  </div>
+
+                  {/* Performance Stats row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="p-4 bg-[#0c0c1b]/30 light:bg-white border border-white/5 light:border-neutral-200 rounded-xl flex items-center gap-4 shadow-sm">
+                      <div className="w-10 h-10 rounded-full bg-violet-600/10 flex items-center justify-center text-violet-400">
+                        <Users className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-mono text-gray-500 font-bold uppercase">Alumnos Totales</div>
+                        <div className="text-lg font-bold text-white light:text-neutral-900 mt-0.5">{students.length}</div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-[#0c0c1b]/30 light:bg-white border border-white/5 light:border-neutral-200 rounded-xl flex items-center gap-4 shadow-sm">
+                      <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500">
+                        <AlertTriangle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-mono text-gray-500 font-bold uppercase">En Alerta / Atrasados</div>
+                        <div className="text-lg font-bold text-yellow-500 mt-0.5">
+                          {totalWarnStudents}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-[#0c0c1b]/30 light:bg-white border border-white/5 light:border-neutral-200 rounded-xl flex items-center gap-4 shadow-sm">
+                      <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-mono text-gray-500 font-bold uppercase">Al Día</div>
+                        <div className="text-lg font-bold text-emerald-400 mt-0.5">
+                          {totalOkStudents}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Controller row: Filters + Search */}
+                  <div className="flex flex-col md:flex-row items-center gap-4 justify-between pt-2">
+                    <div className="flex bg-neutral-900/40 p-1 rounded-xl border border-white/5 light:bg-white light:border-neutral-200 w-full md:w-auto gap-1">
+                      <button
+                        onClick={() => setPerformanceStatusFilter('all')}
+                        className={`flex-1 md:flex-initial px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
+                          performanceStatusFilter === 'all'
+                            ? 'bg-violet-600 text-white shadow-sm'
+                            : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+                        }`}
+                      >
+                        Todos ({students.length})
+                      </button>
+                      <button
+                        onClick={() => setPerformanceStatusFilter('warn')}
+                        className={`flex-1 md:flex-initial px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          performanceStatusFilter === 'warn'
+                            ? 'bg-yellow-600 text-white shadow-sm'
+                            : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+                        }`}
+                      >
+                        Atrasados ({totalWarnStudents})
+                      </button>
+                      <button
+                        onClick={() => setPerformanceStatusFilter('ok')}
+                        className={`flex-1 md:flex-initial px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          performanceStatusFilter === 'ok'
+                            ? 'bg-emerald-600 text-white shadow-sm'
+                            : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+                        }`}
+                      >
+                        Al Día ({totalOkStudents})
+                      </button>
+                    </div>
+
+                    {/* Live search input field */}
+                    <div className="relative w-full md:w-72">
+                      <span className="absolute inset-y-0 left-0.5 flex items-center pl-2.5 pointer-events-none text-gray-500">
+                        <Search className="w-4 h-4" />
+                      </span>
+                      <input
+                        type="text"
+                        value={studentSearchQuery}
+                        onChange={(e) => setStudentSearchQuery(e.target.value)}
+                        placeholder="Buscar alumno, escuela o nivel..."
+                        className="w-full pl-9 pr-3 py-2 bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-xl text-white light:text-neutral-800 placeholder-gray-500 text-xs focus:outline-none focus:border-violet-500 transition-colors shadow-inner font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Students Performance Grid Table */}
+                  <div className="bg-neutral-900/40 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl overflow-hidden overflow-x-auto shadow-sm">
+                    <table className="w-full text-left border-collapse min-w-[700px]">
+                      <thead>
+                        <tr className="border-b border-white/5 light:border-neutral-100 bg-neutral-950/30 text-gray-500 text-[10px] tracking-wider font-bold uppercase font-mono">
+                          <th className="px-4 py-3">Estudiante</th>
+                          <th className="px-4 py-3">Colegio o Institución</th>
+                          <th className="px-4 py-3">Nivel</th>
+                          <th className="px-4 py-3">Avance Académico</th>
+                          <th className="px-4 py-3">Desafíos Pendientes</th>
+                          <th className="px-4 py-3">Estado</th>
+                          <th className="px-4 py-3 text-right">Alerta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {students.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="text-center py-12 text-gray-500 italic text-xs">
+                              No hay alumnos cargados en el campus todavía.
+                            </td>
+                          </tr>
+                        ) : (() => {
+                          const filtered = enrichedStudents
+                            .filter(s => {
+                              if (performanceStatusFilter === 'warn') return s.computedStatus === 'warn';
+                              if (performanceStatusFilter === 'ok') return s.computedStatus === 'ok';
+                              return true;
+                            })
+                            .filter(s => {
+                              const q = studentSearchQuery.toLowerCase().trim();
+                              if (!q) return true;
+                              return (
+                                s.name.toLowerCase().includes(q) ||
+                                (s.email || '').toLowerCase().includes(q) ||
+                                (s.school || '').toLowerCase().includes(q) ||
+                                `nivel ${s.level}`.includes(q)
+                              );
+                            });
+
+                          if (filtered.length === 0) {
+                            return (
+                              <tr>
+                                <td colSpan={7} className="text-center py-12 text-gray-500 italic text-xs">
+                                  No se encontraron alumnos coincidentes con los filtros seleccionados.
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          // Ordenar: primero los que deben MÁS desafíos faltantes.
+                          // Si hay empate, colocamos primero a los que tienen más desafíos urgentes.
+                          const sorted = [...filtered].sort((a, b) => {
+                            if (b.missingChallenges.length !== a.missingChallenges.length) {
+                              return b.missingChallenges.length - a.missingChallenges.length;
+                            }
+                            return b.urgentMissingChallenges.length - a.urgentMissingChallenges.length;
+                          });
+
+                          return sorted.map(student => {
+                            const studentEmail = student.email || '';
+                            const {
+                              completionRate,
+                              missingChallenges,
+                              urgentMissingChallenges,
+                              studentSubmissions,
+                              activeCohortClasses,
+                              computedStatus
+                            } = student;
+
+                            const maxWeekInCohort = activeCohortClasses.length > 0
+                              ? Math.max(...activeCohortClasses.map(cl => cl.week))
+                              : 0;
+
+                            return (
+                              <tr 
+                                key={studentEmail}
+                                className="border-b border-white/5 light:border-neutral-100 text-xs text-gray-300 light:text-neutral-700 hover:bg-white/[0.01] light:hover:bg-neutral-50/50 transition-colors"
+                              >
+                                {/* Profile */}
+                                <td className="px-4 py-3.5">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-full bg-violet-600/10 border border-violet-500/20 flex items-center justify-center text-[10px] font-bold text-violet-400 uppercase shrink-0">
+                                      {student.initials || student.name.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <div className="font-semibold text-white light:text-neutral-900">{student.name}</div>
+                                      <div className="text-[10px] text-gray-500 font-mono">{studentEmail}</div>
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Colegio */}
+                                <td className="px-4 py-3.5 text-gray-400 light:text-neutral-550 max-w-[180px] truncate">
+                                  {student.school || '—'}
+                                </td>
+
+                                {/* Nivel */}
+                                <td className="px-4 py-3.5 font-semibold font-mono text-gray-400 light:text-neutral-600">
+                                  Nivel {student.level}
+                                </td>
+
+                                {/* Avance stats with mini progressBar */}
+                                <td className="px-4 py-3.5">
+                                  <div className="space-y-1">
+                                    <div className="flex justify-between text-[10.5px] font-mono text-gray-400 light:text-neutral-500 font-medium">
+                                      <span>{studentSubmissions.length}/{activeCohortClasses.length} desafíos</span>
+                                      <span className="font-bold text-violet-400 light:text-violet-600">{completionRate}%</span>
+                                    </div>
+                                    <div className="w-24 h-1 bg-white/[0.03] light:bg-neutral-100 rounded-full overflow-hidden">
+                                      <div 
+                                        className="h-full bg-violet-500/80 light:bg-violet-600"
+                                        style={{ width: `${completionRate}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                </td>
+
+                                {/* Desafíos faltantes list */}
+                                <td className="px-4 py-3.5 max-w-[200px]">
+                                  {missingChallenges.length > 0 ? (
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {missingChallenges.map(mc => {
+                                        const isLast = mc.week === maxWeekInCohort;
+                                        const isUrgent = !isLast || !mc.deadline || (new Date(mc.deadline).getTime() < Date.now());
+                                        return (
+                                          <span 
+                                            key={mc.week}
+                                            className={`px-2 py-0.5 rounded text-[9px] font-bold font-mono transition-colors ${
+                                              isUrgent
+                                                ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-500'
+                                                : 'bg-violet-500/10 border border-violet-500/20 text-violet-400 light:text-violet-600'
+                                            }`}
+                                            title={isUrgent ? mc.title : `${mc.title} (Dentro del plazo)`}
+                                          >
+                                            Sem. {mc.week} {!isUrgent && '⏱️'}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : activeCohortClasses.length === 0 ? (
+                                    <span className="text-[10.5px] text-gray-500 italic font-sans">Sin clases asignadas</span>
+                                  ) : (
+                                    <span className="text-emerald-500 font-semibold text-[11px] flex items-center gap-1 font-mono">
+                                      <Check className="w-3.5 h-3.5" />
+                                      Al Día
+                                    </span>
+                                  )}
+                                </td>
+
+                                {/* Estado status badge */}
+                                <td className="px-4 py-3.5">
+                                  <span className={`px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded ${
+                                    computedStatus === 'warn'
+                                      ? 'bg-yellow-950/40 text-yellow-500 border border-yellow-500/10 font-mono'
+                                      : 'bg-green-950/40 text-green-400 border border-green-500/10 font-mono'
+                                  }`}>
+                                    {computedStatus === 'warn' ? 'Atrasado' : 'Al Día'}
+                                  </span>
+                                </td>
+
+                                {/* Alerta Interactiva Bell */}
+                                <td className="px-4 py-3.5 text-right">
+                                  <button
+                                    onClick={() => {
+                                      setBellNotification({
+                                        studentName: student.name,
+                                        email: studentEmail
+                                      });
+                                      // Scroll to top to see notification popup immediately
+                                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                                    }}
+                                    className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                      computedStatus === 'warn'
+                                        ? 'bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500 hover:text-black hover:scale-105 active:scale-95 shadow'
+                                        : 'bg-white/5 border-white/5 text-gray-600 hover:bg-white/10 hover:text-white'
+                                    }`}
+                                    title={computedStatus === 'warn' ? `Enviar recordatorio urgente de entregas a ${student.name}` : `Enviar felicitación por desempeño positivo a ${student.name}`}
+                                  >
+                                    <Bell className="w-3.5 h-3.5" />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          });
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
           </motion.div>
         ) : activeTab === 'clases' ? (
           /* MINIMAL SYLLABUS LIST GESTOR */

@@ -74,6 +74,94 @@ export default function ClassModal({
   const [actDesc, setActDesc] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewTab, setPreviewTab] = useState<'content' | 'video' | 'slides' | 'activity'>('content');
+  const [hasDraft, setHasDraft] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState('');
+
+  // 1. Check for drafts on load
+  useEffect(() => {
+    if (isOpen && !initialClass) {
+      const saved = localStorage.getItem('fintly_class_draft');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (parsed && (parsed.title || parsed.text || parsed.actTitle || parsed.videoId)) {
+            setHasDraft(true);
+            if (parsed.savedAt) {
+              const d = new Date(parsed.savedAt);
+              setDraftSavedAt(
+                d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + 
+                ' del ' + 
+                d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+              );
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      } else {
+        setHasDraft(false);
+      }
+    } else {
+      setHasDraft(false);
+    }
+  }, [isOpen, initialClass]);
+
+  // 2. Debounced autosave effect
+  useEffect(() => {
+    if (!isOpen || initialClass) return;
+
+    const delayDebounce = setTimeout(() => {
+      const anyContent = title.trim() || text.trim() || videoId.trim() || slidesUrl.trim() || actTitle.trim() || actDesc.trim();
+      if (anyContent) {
+        const draft = {
+          level,
+          week,
+          title,
+          unlockAt,
+          deadline,
+          text,
+          videoId,
+          slidesUrl,
+          actTitle,
+          actDesc,
+          savedAt: new Date().toISOString()
+        };
+        localStorage.setItem('fintly_class_draft', JSON.stringify(draft));
+      }
+    }, 1500);
+
+    return () => clearTimeout(delayDebounce);
+  }, [isOpen, initialClass, level, week, title, unlockAt, deadline, text, videoId, slidesUrl, actTitle, actDesc]);
+
+  // Handler to Restore Draft
+  const handleRestoreDraft = () => {
+    const saved = localStorage.getItem('fintly_class_draft');
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (parsed) {
+        setLevel(parsed.level ?? 0);
+        setWeek(parsed.week ?? 1);
+        setTitle(parsed.title ?? '');
+        setUnlockAt(parsed.unlockAt ?? '');
+        setDeadline(parsed.deadline ?? '');
+        setText(parsed.text ?? '');
+        setVideoId(parsed.videoId ?? '');
+        setSlidesUrl(parsed.slidesUrl ?? '');
+        setActTitle(parsed.actTitle ?? '');
+        setActDesc(parsed.actDesc ?? '');
+        setHasDraft(false);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Handler to Dismiss Draft
+  const handleDismissDraft = () => {
+    localStorage.removeItem('fintly_class_draft');
+    setHasDraft(false);
+  };
 
   // Rellenar datos si estamos editando
   useEffect(() => {
@@ -110,17 +198,20 @@ export default function ClassModal({
       setActTitle(initialClass.actTitle || '');
       setActDesc(initialClass.actDesc || '');
     } else {
-      // Limpiar formulario para nueva clase
-      setLevel(0);
-      setWeek(1);
-      setTitle('');
-      setUnlockAt('');
-      setDeadline('');
-      setText('');
-      setVideoId('');
-      setSlidesUrl('');
-      setActTitle('');
-      setActDesc('');
+      // Limpiar formulario para nueva clase si no hay borrador activo o si ya fue descartado
+      const saved = localStorage.getItem('fintly_class_draft');
+      if (!saved) {
+        setLevel(0);
+        setWeek(1);
+        setTitle('');
+        setUnlockAt('');
+        setDeadline('');
+        setText('');
+        setVideoId('');
+        setSlidesUrl('');
+        setActTitle('');
+        setActDesc('');
+      }
     }
   }, [initialClass, isOpen]);
 
@@ -181,6 +272,7 @@ export default function ClassModal({
       actDesc: actDesc.trim(),
     };
 
+    localStorage.removeItem('fintly_class_draft');
     onSave(classItem);
   };
 
@@ -214,6 +306,39 @@ export default function ClassModal({
 
         {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 no-scrollbar">
+          {hasDraft && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              className="bg-violet-950/45 border border-violet-500/25 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs mb-2 overflow-hidden light:bg-violet-50 light:border-violet-200"
+            >
+              <div className="flex items-start gap-2.5">
+                <FileText className="w-4 h-4 text-violet-400 light:text-violet-600 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="font-semibold text-white light:text-neutral-900">Borrador auto-guardado encontrado</h4>
+                  <p className="text-gray-400 light:text-neutral-550 text-[11px] mt-0.5">
+                    Tienes una versión sin guardar de esta lección del <span className="font-semibold text-violet-300 light:text-violet-700">{draftSavedAt}</span>.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={handleRestoreDraft}
+                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white font-bold rounded-lg transition-all cursor-pointer"
+                >
+                  Restaurar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDismissDraft}
+                  className="px-2.5 py-1.5 bg-white/5 hover:bg-white/10 dark:text-gray-400 light:bg-neutral-100 light:hover:bg-neutral-200 light:text-neutral-600 text-gray-300 font-bold rounded-lg transition-all cursor-pointer"
+                >
+                  Descartar
+                </button>
+              </div>
+            </motion.div>
+          )}
           {/* Level and Week Inputs Row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
@@ -288,9 +413,76 @@ export default function ClassModal({
 
           {/* Class Text contents body */}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
-              Texto del contenido
-            </label>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
+                Texto del contenido
+              </label>
+              
+              {/* Toolbar de formato rápido */}
+              <div className="flex flex-wrap items-center gap-1 pb-1 select-none">
+                <button
+                  type="button"
+                  title="Insertar subtítulo h3"
+                  onClick={() => {
+                    setText(prev => prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + '### Siguiente Subtítulo\n');
+                  }}
+                  className="px-2 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded text-[10px] font-bold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
+                >
+                  Subtítulo (###)
+                </button>
+                <button
+                  type="button"
+                  title="Insertar viñeta de lista"
+                  onClick={() => {
+                    setText(prev => prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + '* Elemento de la lista\n');
+                  }}
+                  className="px-2 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded text-[10px] font-bold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
+                >
+                  Lista (*)
+                </button>
+                <button
+                  type="button"
+                  title="Insertar texto en negrita"
+                  onClick={() => {
+                    setText(prev => prev + '**negrita**');
+                  }}
+                  className="px-2.5 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded text-[10px] font-extrabold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
+                >
+                  B
+                </button>
+                <button
+                  type="button"
+                  title="Insertar texto en cursiva"
+                  onClick={() => {
+                    setText(prev => prev + '*itálica*');
+                  }}
+                  className="px-2.5 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded text-[10px] font-semibold italic transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
+                >
+                  I
+                </button>
+                <button
+                  type="button"
+                  title="Insertar separador horizontal"
+                  onClick={() => {
+                    setText(prev => prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + '---\n');
+                  }}
+                  className="px-2 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded text-[10px] font-bold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
+                >
+                  — Separador
+                </button>
+                <button
+                  type="button"
+                  title="Cargar plantilla de ejemplo estructurada"
+                  onClick={() => {
+                    setText('### 1. Conceptos Claves de Ahorro\n\n¿Por qué ahorramos? El ahorro no es solo guardar dinero, sino postergar un consumo presente para asegurar un beneficio futuro.\n\n### 2. Método de la Regla 50/30/20\n\nEste es un sistema clásico y efectivo para ordenar tus ingresos:\n\n* **50% Necesidades**: Alquiler, servicios, comida indispensable.\n* **30% Deseos**: Salidas, entretenimiento, indumentaria por gusto.\n* **20% Ahorro e Inversión**: Fondo de emergencia, aportes a cuentas de acciones.\n\n---\n\n### 3. Conclusión Práctica\n\nMantener la consistencia supera ampliamente al volumen inicial. ¡Hazlo un hábito todos los meses!');
+                  }}
+                  className="px-2 py-1 bg-violet-600/15 hover:bg-violet-600/35 text-violet-300 light:bg-violet-50 light:text-violet-700 rounded text-[10px] font-bold transition-colors border border-violet-500/20 cursor-pointer"
+                >
+                  ✨ Ejemplo
+                </button>
+              </div>
+            </div>
+            
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
