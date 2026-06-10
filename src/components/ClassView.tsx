@@ -167,31 +167,36 @@ export default function ClassView({
         </h1>
       </div>
 
-      {/* Tabs Menu Navigation (Pill styled) */}
-      <div className="flex bg-neutral-900/60 light:bg-neutral-100 p-1 rounded-xl border border-white/5 light:border-neutral-200 mb-8 overflow-x-auto no-scrollbar scroll-smooth self-start max-w-max">
+      {/* Tabs Menu Navigation (Pill styled with fluid slide animation) */}
+      <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 mb-8 overflow-x-auto no-scrollbar scroll-smooth self-start max-w-max relative z-10 shadow-lg gap-1">
         {(
           [
-            { id: 'content', label: '📖 Contenido', icon: BookOpen },
-            { id: 'video', label: '🎥 Video', icon: Video },
-            { id: 'slides', label: '📊 Diapositivas', icon: Presentation },
-            { id: 'activity', label: '✏️ Actividad', icon: FilePenLine },
+            { id: 'content', label: 'Contenido' },
+            { id: 'video', label: 'Video' },
+            { id: 'slides', label: 'Diapositivas' },
+            { id: 'activity', label: 'Actividad' },
           ] as const
         ).map((tab) => {
-          const Icon = tab.icon;
           const isActive = activeTab === tab.id;
 
           return (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg whitespace-nowrap transition-all cursor-pointer border ${
+              className={`relative flex items-center px-4.5 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
                 isActive
-                  ? 'bg-violet-600 border-violet-500 text-white shadow-sm shadow-violet-950/10 light:bg-violet-100 light:border-violet-200 light:text-violet-700'
-                  : 'border-transparent text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
+                  ? 'text-white'
+                  : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-800'
               }`}
             >
-              <Icon className="w-3.5 h-3.5" />
-              <span>{tab.label.split(' ')[1]}</span>
+              {isActive && (
+                <motion.div
+                  layoutId="activeStudentTabPill"
+                  className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+              <span className="relative z-10">{tab.label}</span>
             </button>
           );
         })}
@@ -376,7 +381,7 @@ export default function ClassView({
                       <motion.span 
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="text-[10px] text-green-400 font-medium flex items-center gap-1 font-sans bg-green-500/10 px-2 py-0.5 rounded border border-green-500/20"
+                        className="text-[10px] text-green-400 font-medium flex items-center gap-1 font-sans bg-green-500/10 px-2 py-0.5 rounded-lg border border-green-500/20"
                       >
                         <History className="w-3 h-3 text-green-400" />
                         Borrador recuperado localmente
@@ -397,7 +402,7 @@ export default function ClassView({
                   <button
                     type="submit"
                     disabled={isPastDeadline || !responseText.trim()}
-                    className="py-3 px-6 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold text-sm rounded-xl cursor-pointer shadow-lg shadow-violet-950/30 transition-all select-none disabled:opacity-50 disabled:cursor-not-allowed transform active:scale-95"
+                    className="liquid-glass-btn py-3 px-6 text-sm font-bold"
                   >
                     Entregar actividad →
                   </button>

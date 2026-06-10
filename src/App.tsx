@@ -421,8 +421,38 @@ export default function App() {
     const studentsRef = collection(db, 'students');
     const unsubscribe = onSnapshot(studentsRef, (snapshot) => {
       let loaded: Student[] = [];
-      snapshot.forEach((doc) => {
-        loaded.push(doc.data() as Student);
+      snapshot.forEach((sn) => {
+        const st = sn.data() as Student;
+        const cleanEmail = st.email?.toLowerCase().trim();
+        if (!cleanEmail) return;
+
+        // Verificar si es un estudiante de demostración (demo student)
+        const isDemo = DEMO_STUDENTS.some(
+          (ds) => ds.email?.toLowerCase().trim() === cleanEmail
+        );
+
+        if (isDemo) {
+          if (!st.registered) {
+            // Asegurar que quede registrado en Firestore para mostrarse como "Activo"
+            const docId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
+            setDoc(doc(db, 'students', docId), { registered: true }, { merge: true }).catch((err) =>
+              console.error("Error al registrar de forma transparente el estudiante demo:", err)
+            );
+          }
+          loaded.push({ ...st, registered: true });
+        } else if (st.registered !== true) {
+          // El alumno está pendiente de registro. Por directiva del usuario, los eliminamos del campus virtual de manera definitiva
+          const docId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
+          console.log(`Eliminando automáticamente alumno de prueba/pendiente de registro: ${cleanEmail}`);
+          deleteDoc(doc(db, 'students', docId)).catch((err) =>
+            console.error("Error al eliminar alumno pendiente de registro en Firestore:", err)
+          );
+          deleteDoc(doc(db, 'users', cleanEmail)).catch((err) =>
+            console.error("Error al eliminar usuario pendiente de registro en Firestore:", err)
+          );
+        } else {
+          loaded.push(st);
+        }
       });
 
       if (loaded.length === 0 && currentUser.role === 'admin') {
@@ -1020,6 +1050,13 @@ export default function App() {
     <div className={`min-h-screen text-gray-200 font-sans relative flex flex-col antialiased selection:bg-violet-600/35 selection:text-white transition-colors duration-200 ${theme === 'light' ? 'light text-neutral-800' : 'text-gray-200'}`}>
       {/* Fondo Canvas Fluido Interactivo de Fintly */}
       <Background theme={theme} />
+
+      {/* Orbes Líquidos Orgánicos Flotantes de Fondo Decorativos */}
+      <div className="absolute inset-0 h-full w-full overflow-hidden pointer-events-none z-0">
+        <div className="absolute top-[20%] left-[-10%] w-[45vw] h-[45vw] rounded-full bg-gradient-to-tr from-violet-600/15 via-indigo-500/10 to-transparent blur-3xl liquid-blob" style={{ animationDelay: '0s' }} />
+        <div className="absolute top-[60%] right-[-15%] w-[50vw] h-[50vw] rounded-full bg-gradient-to-br from-violet-600/12 via-indigo-600/8 to-transparent blur-3xl liquid-blob" style={{ animationDelay: '-4s' }} />
+        <div className="absolute bottom-[10%] left-[25%] w-[35vw] h-[35vw] rounded-full bg-gradient-to-r from-violet-600/10 via-sky-500/8 to-transparent blur-3xl liquid-blob" style={{ animationDelay: '-8s' }} />
+      </div>
 
       {/* Contenedor Principal Reactivo */}
       <div className="flex-1 flex flex-col relative z-10">

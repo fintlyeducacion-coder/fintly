@@ -105,7 +105,7 @@ export default function StudentDashboard({
             Tu trayectoria académica e institucional en Fintly
           </p>
         </div>
-        <div className="bg-neutral-900/40 border border-white/5 light:bg-white light:border-neutral-200 px-4 py-2 rounded-xl flex items-center gap-3 shadow-md shadow-neutral-100/50 light:shadow-neutral-200/10">
+        <div className="liquid-glass px-4.5 py-2 rounded-2xl flex items-center gap-3 shadow-lg hover:scale-[1.02] transition-transform">
           <AwardIcon progress={submissions.filter(s => s.studentEmail.toLowerCase() === user.email.toLowerCase()).length} />
           <div>
             <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Entregas</div>
@@ -128,7 +128,7 @@ export default function StudentDashboard({
               key={selectedCourse.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="relative overflow-hidden rounded-xl p-5 border md:col-span-2 select-none bg-gradient-to-br from-violet-950/20 via-neutral-950/40 to-neutral-950/10 border-violet-500/30 light:from-violet-50/50 light:via-white light:to-neutral-50/30 light:border-violet-300 light:shadow-sm"
+              className="relative overflow-hidden rounded-2xl p-5 md:col-span-2 select-none liquid-glass hover:scale-[1.01] transition-transform shadow-lg"
             >
               {/* Card top-marker */}
               <div className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${selectedCourse.accent}`} />
@@ -137,7 +137,7 @@ export default function StudentDashboard({
                 <span className="text-[9px] uppercase font-bold tracking-wider text-violet-400 font-mono">
                   Nivel {selectedCourse.id} · Asignado
                 </span>
-                <span className="px-2 py-0.5 rounded bg-green-500/10 text-green-400 text-[9px] font-bold tracking-wider uppercase font-mono border border-green-500/20">
+                <span className="px-2 py-0.5 rounded-lg bg-green-500/10 text-green-400 text-[9px] font-bold tracking-wider uppercase font-mono border border-green-500/20">
                   Progreso Activo
                 </span>
               </div>
@@ -165,7 +165,7 @@ export default function StudentDashboard({
           );
         })()}
 
-        <div className="bg-neutral-950/25 border border-white/5 light:bg-white light:border-neutral-200/80 rounded-xl p-5 flex flex-col justify-between shadow-sm">
+        <div className="liquid-glass rounded-2xl p-5 flex flex-col justify-between shadow-lg hover:scale-[1.01] transition-transform">
           <div>
             <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Tu Entorno</span>
             <h4 className="font-semibold text-sm text-white light:text-neutral-800 mt-1.5">{user.school || 'Northfield Sede Puertos'}</h4>
@@ -216,7 +216,7 @@ export default function StudentDashboard({
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-300 hover:text-white light:text-neutral-500 light:hover:text-neutral-950 font-semibold bg-white/10 hover:bg-white/20 light:bg-neutral-100 light:hover:bg-neutral-200 px-2.0 py-1 rounded transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-gray-300 hover:text-white light:text-neutral-500 light:hover:text-neutral-950 font-semibold bg-white/10 hover:bg-white/20 light:bg-neutral-100 light:hover:bg-neutral-200 px-2.0 py-1 rounded-xl transition-colors"
                     >
                       Limpiar
                     </button>
@@ -224,40 +224,44 @@ export default function StudentDashboard({
                 </div>
 
                 {/* Filtros de Estado */}
-                <div className="flex bg-neutral-900/60 light:bg-neutral-100 p-1 rounded-xl border border-white/5 light:border-neutral-200 self-start md:self-auto text-xs shrink-0 select-none">
-                  <button
-                    type="button"
-                    onClick={() => setStatusFilter('all')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                      statusFilter === 'all'
-                        ? 'bg-violet-600 border-violet-500/20 text-white shadow-sm light:bg-violet-100 light:border-violet-200 light:text-violet-700'
-                        : 'text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
-                    }`}
-                  >
-                    Todas ({initialFilteredClasses.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusFilter('pending')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                      statusFilter === 'pending'
-                        ? 'bg-violet-600 border-violet-500/20 text-white shadow-sm light:bg-violet-100 light:border-violet-200 light:text-violet-700'
-                        : 'text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
-                    }`}
-                  >
-                    Disponibles ({initialFilteredClasses.filter(c => isUnlocked(c) && !hasSubmitted(c)).length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setStatusFilter('completed')}
-                    className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                      statusFilter === 'completed'
-                        ? 'bg-violet-600 border-violet-500/20 text-white shadow-sm light:bg-violet-100 light:border-violet-200 light:text-violet-700'
-                        : 'text-gray-400 hover:text-white light:text-neutral-500 light:hover:text-neutral-800'
-                    }`}
-                  >
-                    Entregadas ({initialFilteredClasses.filter(c => isUnlocked(c) && hasSubmitted(c)).length})
-                  </button>
+                <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 self-start md:self-auto text-xs shrink-0 select-none relative z-10 gap-1 shadow-lg">
+                  {(
+                    [
+                      { id: 'all', label: 'Todas', count: initialFilteredClasses.length },
+                      { id: 'pending', label: 'Disponibles', count: initialFilteredClasses.filter(c => isUnlocked(c) && !hasSubmitted(c)).length },
+                      { id: 'completed', label: 'Entregadas', count: initialFilteredClasses.filter(c => isUnlocked(c) && hasSubmitted(c)).length }
+                    ] as const
+                  ).map((bt) => {
+                    const isActive = statusFilter === bt.id;
+                    return (
+                      <button
+                        key={bt.id}
+                        type="button"
+                        onClick={() => setStatusFilter(bt.id)}
+                        className={`relative flex items-center gap-1.5 px-4.5 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
+                          isActive
+                            ? 'text-white'
+                            : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-800'
+                        }`}
+                      >
+                        {isActive && (
+                          <motion.div
+                            layoutId="studentDashboardStatusFilter"
+                            className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
+                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                          />
+                        )}
+                        <span className="relative z-10">{bt.label}</span>
+                        <span className={`relative z-10 text-[10px] px-1.5 py-0.5 rounded-lg ${
+                          isActive 
+                            ? 'bg-white/15 text-white' 
+                            : 'bg-white/5 text-gray-500 light:bg-neutral-200/60 light:text-neutral-550'
+                        }`}>
+                          {bt.count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -271,10 +275,10 @@ export default function StudentDashboard({
                       <div
                         key={cl.week}
                         onClick={() => ok && onOpenClass(cl.level, cl.week)}
-                        className={`group flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl border transition-all duration-200 ${
+                        className={`group flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl transition-all duration-300 ${
                           ok
-                            ? 'bg-neutral-950/40 border-white/5 hover:border-violet-500/30 hover:bg-neutral-950/65 cursor-pointer active:scale-[0.995] light:bg-white light:border-neutral-200 light:hover:border-violet-400 light:shadow-sm light:shadow-neutral-100/30'
-                            : 'bg-neutral-950/10 border-white/5 opacity-40 cursor-not-allowed light:bg-neutral-100 light:border-neutral-200'
+                            ? 'liquid-glass-interactive cursor-pointer active:scale-[0.995]'
+                            : 'bg-neutral-950/10 border border-white/5 opacity-40 cursor-not-allowed light:bg-neutral-100 light:border-neutral-200'
                         }`}
                       >
                         <div className="flex items-center gap-4">
@@ -342,7 +346,7 @@ export default function StudentDashboard({
                         setSearchQuery('');
                         setStatusFilter('all');
                       }}
-                      className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white font-semibold text-xs rounded-lg transition-all shadow-md shadow-violet-950/20 cursor-pointer"
+                      className="liquid-glass-btn px-5 py-2.5 text-xs text-center"
                     >
                       Restablecer filtros
                     </button>

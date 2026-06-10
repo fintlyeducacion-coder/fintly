@@ -255,7 +255,7 @@ export default function StaffProgress({
                       </h3>
                     </div>
                     {pendingCorrectionCount > 0 && (
-                      <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded uppercase animate-pulse">
+                      <span className="px-2 py-0.5 text-[9px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg uppercase animate-pulse">
                         {pendingCorrectionCount} pendientes
                       </span>
                     )}
@@ -416,7 +416,7 @@ export default function StaffProgress({
                         </div>
 
                         <span
-                          className={`px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded border ${
+                          className={`px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider rounded-lg border ${
                             isOk
                               ? 'bg-emerald-950/20 border-emerald-500/20 text-emerald-400 light:bg-emerald-50 light:border-emerald-200 light:text-emerald-700'
                               : 'bg-yellow-950/20 border-yellow-500/20 text-yellow-400 light:bg-yellow-50 light:border-yellow-200 light:text-yellow-700'
@@ -446,26 +446,42 @@ export default function StaffProgress({
             </h2>
 
             {/* Sub-tabs filters */}
-            <div className="flex gap-1 bg-neutral-950/60 light:bg-neutral-100 p-0.5 rounded-lg border border-white/5 light:border-neutral-200 text-[10px] font-semibold">
+            <div className="flex bg-[#14132b]/40 light:bg-neutral-100/85 backdrop-blur-md p-0.5 rounded-xl border border-white/5 light:border-neutral-200 text-[10px] font-bold relative z-10 gap-0.5 shadow-md">
               <button
+                type="button"
                 onClick={() => setActiveSubTab('pending')}
-                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                className={`relative px-3 py-1.5 rounded-lg transition-all duration-300 cursor-pointer ${
                   activeSubTab === 'pending'
-                    ? 'bg-violet-600/95 text-white'
+                    ? 'text-white'
                     : 'text-gray-400 hover:text-white light:text-neutral-600 light:hover:text-neutral-900'
                 }`}
               >
-                Pendientes ({pendingSubmissions.length})
+                {activeSubTab === 'pending' && (
+                  <motion.div
+                    layoutId="staffProgressSubTabPill"
+                    className="absolute inset-0 bg-gradient-to-r from-violet-650 to-indigo-600 shadow-sm rounded-lg -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">Pendientes ({pendingSubmissions.length})</span>
               </button>
               <button
+                type="button"
                 onClick={() => setActiveSubTab('graded')}
-                className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
+                className={`relative px-3 py-1.5 rounded-lg transition-all duration-300 cursor-pointer ${
                   activeSubTab === 'graded'
-                    ? 'bg-violet-600/95 text-white'
+                    ? 'text-white'
                     : 'text-gray-400 hover:text-white light:text-neutral-600 light:hover:text-neutral-900'
                 }`}
               >
-                Corregidas ({gradedSubmissions.length})
+                {activeSubTab === 'graded' && (
+                  <motion.div
+                    layoutId="staffProgressSubTabPill"
+                    className="absolute inset-0 bg-gradient-to-r from-violet-650 to-indigo-600 shadow-sm rounded-lg -z-10"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">Corregidas ({gradedSubmissions.length})</span>
               </button>
             </div>
           </div>
@@ -501,7 +517,7 @@ export default function StaffProgress({
                     <div className="flex justify-end pt-1">
                       <button
                         onClick={() => setSelectedSubmission(sub)}
-                        className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors shadow-lg flex items-center gap-1.5"
+                        className="liquid-glass-btn inline-flex items-center gap-1.5 px-4.5 py-2.5 text-[11.5px]"
                       >
                         <Award className="w-3.5 h-3.5" />
                         <span>Calificar y Dar Feedback</span>

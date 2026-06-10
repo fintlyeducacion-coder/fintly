@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, BookOpen, Trash2, Users, AlertTriangle, School, ChevronRight, ArrowLeft, CheckCircle2, Clock, FileText, Loader2,
-  Mail, ExternalLink, Sparkles, Search, Bell, Calendar, ChevronDown, Check, UserPlus
+  Mail, ExternalLink, Sparkles, Search, Bell, Calendar, ChevronDown, Check, UserPlus, TrendingUp
 } from 'lucide-react';
 import { ClassItem, Student, ActivitySubmission } from '../types';
 import ClassModal from './ClassModal';
@@ -406,62 +406,96 @@ export default function AdminPanel({
         </div>
 
         {/* Seamless Navigation Tab */}
-        <div className="flex flex-wrap bg-neutral-900/60 light:bg-white p-1 rounded-lg border border-white/5 light:border-neutral-200 self-start gap-1">
+        <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 self-start gap-1 relative z-10 shadow-lg overflow-x-auto no-scrollbar scroll-smooth">
           <button
             onClick={() => {
               setActiveTab('colegios');
               setActiveSchool(null);
               setActiveLevel(null);
             }}
-            className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer ${
+            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
               activeTab === 'colegios'
-                ? 'bg-violet-600/90 text-white shadow'
-                : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+                ? 'text-white'
+                : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-850'
             }`}
           >
-            Colegios
+            {activeTab === 'colegios' && (
+              <motion.div
+                layoutId="activeAdminTabPill"
+                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              />
+            )}
+            <School className="w-3.5 h-3.5 relative z-10" />
+            <span className="relative z-10">Colegios</span>
           </button>
 
           <button
             onClick={() => {
               setActiveTab('rendimiento');
             }}
-            className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer ${
+            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
               activeTab === 'rendimiento'
-                ? 'bg-violet-600/90 text-white shadow'
-                : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+                ? 'text-white'
+                : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-850'
             }`}
           >
-            Rendimiento Estudiantil
+            {activeTab === 'rendimiento' && (
+              <motion.div
+                layoutId="activeAdminTabPill"
+                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              />
+            )}
+            <TrendingUp className="w-3.5 h-3.5 relative z-10" />
+            <span className="relative z-10">Rendimiento Estudiantil</span>
           </button>
 
           <button
             onClick={() => {
               setActiveTab('clases');
             }}
-            className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer ${
+            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
               activeTab === 'clases'
-                ? 'bg-violet-600/90 text-white shadow'
-                : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+                ? 'text-white'
+                : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-855'
             }`}
           >
-            Syllabus Académico
+            {activeTab === 'clases' && (
+              <motion.div
+                layoutId="activeAdminTabPill"
+                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              />
+            )}
+            <BookOpen className="w-3.5 h-3.5 relative z-10" />
+            <span className="relative z-10">Syllabus Académico</span>
           </button>
           
           <button
             onClick={() => {
               setActiveTab('usuarios');
             }}
-            className={`px-3.5 py-1.5 font-medium text-xs rounded-md transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
               activeTab === 'usuarios'
-                ? 'bg-violet-600/90 text-white shadow'
-                : 'text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800'
+                ? 'text-white'
+                : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-850'
             }`}
           >
-            <span>Usuarios</span>
-            {allUsers.filter(u => u.role === 'pausado').length > 0 && (
-              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" title="Solicitudes pendientes" />
+            {activeTab === 'usuarios' && (
+              <motion.div
+                layoutId="activeAdminTabPill"
+                className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
+                transition={{ type: "spring", stiffness: 380, damping: 30 }}
+              />
             )}
+            <Users className="w-3.5 h-3.5 relative z-10" />
+            <span className="relative z-10 inline-flex items-center gap-1.5">
+              <span>Usuarios</span>
+              {allUsers.filter(u => u.role === 'pausado').length > 0 && (
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse relative z-10" title="Solicitudes pendientes" />
+              )}
+            </span>
           </button>
         </div>
       </div>
@@ -487,15 +521,15 @@ export default function AdminPanel({
                     <p className="text-xl font-bold text-white light:text-neutral-900 font-mono">{ASSOCIATED_SCHOOLS.length}</p>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] text-gray-400 light:text-neutral-550 uppercase tracking-wider font-mono font-bold">Alumnos Activos</span>
+                    <span className="text-[10px] text-gray-400 light:text-neutral-500 uppercase tracking-wider font-mono font-bold">Alumnos Activos</span>
                     <p className="text-xl font-bold text-violet-400 light:text-violet-600 font-mono">{totalStudentsCount}</p>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] text-gray-400 light:text-neutral-550 uppercase tracking-wider font-mono font-bold">Respuesta Media</span>
+                    <span className="text-[10px] text-gray-400 light:text-neutral-500 uppercase tracking-wider font-mono font-bold">Respuesta Media</span>
                     <p className="text-xl font-bold text-emerald-400 light:text-emerald-600 font-mono">{submissionRatePct}%</p>
                   </div>
                   <div className="space-y-1">
-                    <span className="text-[10px] text-gray-400 light:text-neutral-550 uppercase tracking-wider font-mono font-bold">Clases Publicadas</span>
+                    <span className="text-[10px] text-gray-400 light:text-neutral-500 uppercase tracking-wider font-mono font-bold">Clases Publicadas</span>
                     <p className="text-xl font-bold text-indigo-400 light:text-indigo-600 font-mono">
                       {classes.filter(cl => !cl.isSyllabus).length}
                     </p>
@@ -509,9 +543,9 @@ export default function AdminPanel({
                   </div>
                   <button
                     onClick={handleCreateStudentClick}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold cursor-pointer transition-colors shadow-lg shadow-violet-600/10"
+                    className="liquid-glass-btn inline-flex items-center gap-2 px-4.5 py-2 text-xs"
                   >
-                    <UserPlus className="w-4 h-4" />
+                    <UserPlus className="w-4 h-4 shrink-0" />
                     <span>Invitar Alumno</span>
                   </button>
                 </div>
@@ -524,7 +558,7 @@ export default function AdminPanel({
                     return (
                       <div
                         key={school}
-                        className="bg-neutral-950/40 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl shadow-sm overflow-hidden transition-all"
+                        className="liquid-glass rounded-2xl overflow-hidden transition-all"
                       >
                         {/* School Header / Toggle Row */}
                         <div
@@ -534,7 +568,7 @@ export default function AdminPanel({
                           className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-5 cursor-pointer hover:bg-neutral-900/10 light:hover:bg-neutral-50/40 transition-colors select-none"
                         >
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-xl bg-violet-950/40 border border-violet-500/10 light:bg-violet-50 light:border-violet-100 flex items-center justify-center text-violet-400 light:text-violet-650 shrink-0">
+                            <div className="w-10 h-10 rounded-xl bg-violet-950/40 border border-violet-500/10 light:bg-violet-50 light:border-violet-100 flex items-center justify-center text-violet-400 light:text-violet-700 shrink-0">
                               <School className="w-5 h-5" />
                             </div>
                             <div>
@@ -544,7 +578,7 @@ export default function AdminPanel({
                               <div className="flex items-center gap-2 mt-0.5 text-xs text-gray-500 font-medium">
                                 <span className="font-mono">{stats.studentCount} alumnos registrados</span>
                                 <span>•</span>
-                                <span className="text-violet-400 light:text-violet-605 font-mono font-bold">{stats.completionRate}% de avance general</span>
+                                <span className="text-violet-400 light:text-violet-600 font-mono font-bold">{stats.completionRate}% de avance general</span>
                               </div>
                             </div>
                           </div>
@@ -559,7 +593,7 @@ export default function AdminPanel({
                               }}
                               className={`px-3 py-1.5 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all inline-flex items-center gap-1.5 shadow-sm border ${
                                 isExpanded
-                                  ? 'bg-violet-650 text-white border-violet-600'
+                                  ? 'bg-violet-600 text-white border-violet-600'
                                   : 'bg-neutral-900/60 hover:bg-neutral-850 text-gray-300 border-white/5 hover:text-white light:bg-neutral-100 light:text-neutral-700 light:border-neutral-200 light:hover:bg-neutral-200/80 light:hover:text-black'
                               }`}
                             >
@@ -568,19 +602,19 @@ export default function AdminPanel({
                             </button>
 
                             {/* Divider line style */}
-                            <div className="h-4 w-[1px] bg-white/10 light:bg-neutral-250 mx-0.5 hidden sm:block" />
+                            <div className="h-4 w-[1px] bg-white/10 light:bg-neutral-200 mx-0.5 hidden sm:block" />
 
                             {isExpanded ? (
                               <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-violet-400 light:text-violet-600 bg-violet-500/10 px-2.5 py-1 rounded-md">
                                 Ocultar Niveles
                               </span>
                             ) : (
-                              <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-gray-400 light:text-neutral-550 bg-neutral-900/30 light:bg-neutral-100 px-2.5 py-1 rounded-md">
+                              <span className="text-[10px] uppercase font-mono font-bold tracking-wider text-gray-400 light:text-neutral-600 bg-neutral-900/30 light:bg-neutral-100 px-2.5 py-1 rounded-md">
                                 Expandir
                               </span>
                             )}
                             <ChevronDown
-                              className={`w-4 h-4 text-gray-400 light:text-neutral-550 transition-transform duration-300 ${
+                              className={`w-4 h-4 text-gray-400 light:text-neutral-600 transition-transform duration-300 ${
                                 isExpanded ? 'rotate-180 text-violet-400 light:text-violet-600' : ''
                               }`}
                             />
@@ -654,7 +688,7 @@ export default function AdminPanel({
                                           </td>
 
                                           {/* Clases subidas */}
-                                          <td className="px-3 py-3 font-mono text-[11px] text-gray-400 light:text-neutral-550">
+                                          <td className="px-3 py-3 font-mono text-[11px] text-gray-400 light:text-neutral-600">
                                             {assignedClasses.length > 0 ? (
                                               <div className="flex items-center gap-1.5">
                                                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
@@ -711,7 +745,7 @@ export default function AdminPanel({
                                                     setAssignDeadline(new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
                                                     setAssignModalOpen(true);
                                                   }}
-                                                  className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-[11px] font-semibold transition-colors cursor-pointer inline-flex items-center gap-1 shadow shadow-violet-600/10"
+                                                  className="liquid-glass-btn px-4 py-2 text-[11px] inline-flex items-center gap-1.5"
                                                   title="Planificar y subir la siguiente clase del Syllabus"
                                                 >
                                                   <Plus className="w-3.5 h-3.5" />
@@ -760,7 +794,7 @@ export default function AdminPanel({
                       <div
                         key={lvl}
                         onClick={() => setActiveLevel(lvl)}
-                        className="bg-neutral-950/40 hover:bg-neutral-900/35 light:bg-white light:hover:bg-neutral-50 border border-white/5 light:border-neutral-200 rounded-xl p-5 transition-all cursor-pointer group flex flex-col justify-between shadow-sm"
+                        className="liquid-glass-interactive rounded-2xl p-5 hover:scale-[1.02] cursor-pointer group flex flex-col justify-between shadow-lg"
                       >
                         <div className="space-y-1.5">
                           <span className="text-[10px] font-semibold text-violet-400 light:text-violet-600 uppercase tracking-widest block font-mono">
@@ -824,9 +858,9 @@ export default function AdminPanel({
 
                     <button
                       onClick={handleCreateStudentClick}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-sm"
+                      className="liquid-glass-btn inline-flex items-center gap-2 px-4.5 py-2.5 text-xs font-bold"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <UserPlus className="w-4 h-4 shrink-0" />
                       <span>Invitar Alumno</span>
                     </button>
 
@@ -1366,7 +1400,7 @@ export default function AdminPanel({
                                 </td>
 
                                 {/* Colegio */}
-                                <td className="px-4 py-3.5 text-gray-400 light:text-neutral-550 max-w-[180px] truncate">
+                                <td className="px-4 py-3.5 text-gray-400 light:text-neutral-600 max-w-[180px] truncate">
                                   {student.school || '—'}
                                 </td>
 
@@ -1486,28 +1520,38 @@ export default function AdminPanel({
 
               <button
                 onClick={() => handleCreatePreConfiguredClick(selectedSyllabusLevel)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-violet-600 text-white rounded-lg hover:bg-violet-500 text-xs font-semibold cursor-pointer transition-colors shadow-lg self-start sm:self-auto"
+                className="liquid-glass-btn inline-flex items-center gap-2 px-5 py-2.5 text-xs select-none"
               >
-                <Plus className="w-3.5 h-3.5" />
+                <Plus className="w-4 h-4 shrink-0" />
                 <span>Crear clase para Nivel {selectedSyllabusLevel}</span>
               </button>
             </div>
 
-            {/* Level Selector Pills */}
-            <div className="flex gap-2 overflow-x-auto no-scrollbar py-1">
-              {COURSES.map(course => (
-                <button
-                  key={course.id}
-                  onClick={() => setSelectedSyllabusLevel(course.id)}
-                  className={`px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer ${
-                    selectedSyllabusLevel === course.id
-                      ? 'bg-violet-600 border-violet-500 text-white shadow-md shadow-violet-600/20'
-                      : 'bg-neutral-950/40 border-white/5 text-gray-400 hover:text-white hover:border-white/10 light:bg-white light:border-neutral-200 light:text-neutral-600 light:hover:text-neutral-900'
-                  }`}
-                >
-                  Nivel {course.id} · {course.name}
-                </button>
-              ))}
+            {/* Level Selector Pills with fluid animation */}
+            <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 mb-2 overflow-x-auto no-scrollbar scroll-smooth self-start max-w-max relative z-10 shadow-lg gap-1">
+              {COURSES.map(course => {
+                const isActive = selectedSyllabusLevel === course.id;
+                return (
+                  <button
+                    key={course.id}
+                    onClick={() => setSelectedSyllabusLevel(course.id)}
+                    className={`relative flex items-center px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
+                      isActive
+                        ? 'text-white'
+                        : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-850'
+                    }`}
+                  >
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeSyllabusLevelTabPill"
+                        className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
+                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10">Nivel {course.id} · {course.name}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Grid display of syllabus classes */}
@@ -1585,7 +1629,7 @@ export default function AdminPanel({
                             setAssignDeadline(new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
                             setAssignModalOpen(true);
                           }}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors shadow-md shadow-violet-600/10"
+                          className="liquid-glass-btn inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold select-none cursor-pointer"
                         >
                           <Clock className="w-3.5 h-3.5 shrink-0" />
                           <span>Subir Clase</span>
@@ -1721,7 +1765,7 @@ export default function AdminPanel({
                                     onDeleteUser(u.email);
                                   }
                                 }}
-                                className="p-1 px-2 text-red-100 bg-red-650 hover:bg-red-500/20 rounded cursor-pointer transition-colors text-[10px]"
+                                className="p-1 px-2 text-red-100 bg-red-600 hover:bg-red-550 rounded cursor-pointer transition-colors text-[10px]"
                                 title="Eliminar usuario"
                               >
                                 <Trash2 className="w-3 h-3 inline mr-1" />
@@ -1796,7 +1840,7 @@ export default function AdminPanel({
                           setAssignSelectedSchools([...ASSOCIATED_SCHOOLS]);
                         }
                       }}
-                      className="text-[10px] text-violet-400 light:text-violet-650 font-semibold hover:underline cursor-pointer font-sans"
+                      className="text-[10px] text-violet-400 light:text-violet-700 font-semibold hover:underline cursor-pointer font-sans"
                     >
                       {assignSelectedSchools.length === ASSOCIATED_SCHOOLS.length ? 'Desmarcar todos' : 'Marcar todos'}
                     </button>
@@ -2274,7 +2318,7 @@ export default function AdminPanel({
                 {deleteConfirmation.school && (
                   <div className="flex flex-col gap-0.5 mt-1 pt-2 border-t border-white/5 light:border-neutral-200">
                     <span className="text-gray-400 light:text-neutral-500 font-medium font-mono uppercase tracking-[0.05em] text-[10px]">Institución:</span>
-                    <span className="text-violet-400 light:text-violet-650 font-semibold">
+                    <span className="text-violet-400 light:text-violet-700 font-semibold">
                       {deleteConfirmation.school}
                     </span>
                   </div>

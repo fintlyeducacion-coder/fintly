@@ -90,3 +90,143 @@ body {
 
 /* Permitir selectores light: en los componentes */
 @variant light (.light &);
+
+/* --- Liquid Glass macOS Big Sur / Sonoma Styling Suite --- */
+.liquid-glass {
+  background: rgba(14, 13, 31, 0.45);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.12),
+    0 12px 34px -10px rgba(0, 0, 0, 0.6),
+    0 2px 5px -2px rgba(0, 0, 0, 0.4);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.light .liquid-glass {
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.8),
+    0 12px 34px -10px rgba(100, 100, 115, 0.14),
+    0 2px 5px -2px rgba(100, 100, 115, 0.08);
+}
+
+/* Interactive version with enhanced reflection */
+.liquid-glass-interactive {
+  background: rgba(14, 13, 31, 0.45);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 
+    inset 0 1.5px 1.5px 0 rgba(255, 255, 255, 0.12),
+    0 12px 34px -10px rgba(0, 0, 0, 0.6);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.liquid-glass-interactive:hover {
+  background: rgba(22, 20, 48, 0.6);
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow: 
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.2),
+    0 20px 40px -12px rgba(139, 92, 246, 0.18),
+    0 2px 8px -2px rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
+}
+
+.light .liquid-glass-interactive {
+  background: rgba(255, 255, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.8),
+    0 12px 34px -10px rgba(100, 100, 115, 0.14);
+}
+
+.light .liquid-glass-interactive:hover {
+  background: rgba(255, 255, 255, 0.65);
+  border-color: rgba(255, 255, 255, 0.55);
+  box-shadow: 
+    inset 0 1.5px 2.5px 0 rgba(255, 255, 255, 0.9),
+    0 20px 40px -12px rgba(139, 92, 246, 0.1),
+    0 2px 8px -2px rgba(100, 100, 115, 0.12);
+}
+
+/* Hyper-reflective glass liquid buttons */
+.liquid-glass-btn {
+  background: linear-gradient(135deg, #8B5CF6 0%, #6366F1 50%, #4F46E5 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 9999px !important; /* Pill shape! */
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.01em;
+  box-shadow: 
+    inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.15),
+    0 8px 24px -6px rgba(139, 92, 246, 0.5),
+    0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.liquid-glass-btn:hover {
+  transform: scale(1.05) translateY(-1.0px) !important;
+  background: linear-gradient(135deg, #A78BFA 0%, #7C3AED 40%, #4F46E5 100%) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+  box-shadow: 
+    inset 0 2px 2px 0 rgba(255, 255, 255, 0.6),
+    inset 0 -1.5px 2px 0 rgba(0, 0, 0, 0.15),
+    0 15px 30px -8px rgba(139, 92, 246, 0.65),
+    0 3px 6px -1px rgba(0, 0, 0, 0.25) !important;
+}
+
+.liquid-glass-btn:active {
+  transform: scale(0.97) translateY(0.5px) !important;
+  box-shadow: 
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.3),
+    0 4px 10px -3px rgba(139, 92, 246, 0.4) !important;
+}
+
+.light .liquid-glass-btn {
+  background: linear-gradient(135deg, #7C3AED 0%, #6366F1 50%, #4F46E5 100%) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 
+    inset 0 1.5px 2.0px 0 rgba(255, 255, 255, 0.55),
+    0 8px 20px -6px rgba(124, 58, 237, 0.4) !important;
+}
+
+.light .liquid-glass-btn:hover {
+  background: linear-gradient(135deg, #9061F9 0%, #7C3AED 40%, #4F46E5 100%) !important;
+  box-shadow: 
+    inset 0 2.2px 2.2px 0 rgba(255, 255, 255, 0.7),
+    0 12px 24px -6px rgba(124, 58, 237, 0.5) !important;
+}
+
+/* Fluid blob animated element */
+.liquid-blob {
+  filter: blur(95px);
+  opacity: 0.65;
+  mix-blend-mode: screen;
+  animation: liquid-float 16s ease-in-out infinite alternate;
+}
+
+.light .liquid-blob {
+  mix-blend-mode: multiply;
+  opacity: 0.18;
+}
+
+@keyframes liquid-float {
+  0% {
+    transform: translate(0px, 0px) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(30px, -40px) scale(1.15) rotate(120deg);
+  }
+  66% {
+    transform: translate(-30px, 20px) scale(0.9) rotate(240deg);
+  }
+  100% {
+    transform: translate(0px, 0px) scale(1) rotate(360deg);
+  }
+}
