@@ -41,6 +41,8 @@ export default function App() {
     const saved = localStorage.getItem('fintly_logged_user');
     return saved ? JSON.parse(saved) : null;
   });
+
+  const [authInitialized, setAuthInitialized] = useState<boolean>(false);
   
   // Ref para tener acceso al valor más actualizado de currentUser en closures asíncronos y listeners
   const currentUserRef = useRef<User | null>(null);
@@ -110,162 +112,168 @@ export default function App() {
   // --- 2. ESCUCHAR CAMBIOS DE AUTHENTICATION ---
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const cleanEmail = firebaseUser.email?.toLowerCase() || '';
-        
-        // Si hay una sesión activa previa con otro correo, limpiar el estado local inmediatamente
-        // para desconectar listeners obsoletos antes de realizar consultas de validación async
-        if (currentUserRef.current && currentUserRef.current.email.toLowerCase() !== cleanEmail) {
-          setCurrentUser(null);
-        }
-        
-        let userProfile: User | null = null;
-        try {
-          const userSnap = await getDoc(doc(db, 'users', cleanEmail));
-          if (userSnap.exists()) {
-            userProfile = userSnap.data() as User;
+      try {
+        if (firebaseUser) {
+          const cleanEmail = firebaseUser.email?.toLowerCase() || '';
+          
+          // Si hay una sesión activa previa con otro correo, limpiar el estado local inmediatamente
+          // para desconectar listeners obsoletos antes de realizar consultas de validación async
+          if (currentUserRef.current && currentUserRef.current.email.toLowerCase() !== cleanEmail) {
+            setCurrentUser(null);
           }
-        } catch (e) {
-          console.error("Error reading profile from database", e);
-          handleFirestoreError(e, OperationType.GET, `users/${cleanEmail}`);
-        }
+          
+          let userProfile: User | null = null;
+          try {
+            const userSnap = await getDoc(doc(db, 'users', cleanEmail));
+            if (userSnap.exists()) {
+              userProfile = userSnap.data() as User;
+            }
+          } catch (e) {
+            console.error("Error reading profile from database", e);
+            handleFirestoreError(e, OperationType.GET, `users/${cleanEmail}`);
+          }
 
-        // Primero, si es un usuario administrador o docente definido en DEMO_USERS,
-        // aseguramos que tenga el rol y datos correctos de DEMO_USERS y que exista en la colección 'users'
-        if (cleanEmail in DEMO_USERS) {
-          const demoUserDef = DEMO_USERS[cleanEmail];
-          // Si no existía o el rol en BD no coincide con el rol de admin/directivo configurado, forzarlo y actualizar en Firestore
-          if (!userProfile || userProfile.role !== demoUserDef.role) {
+          // Si no existe, y es el administrador de Fintly Educación, se le da rol de admin y se guarda de inmediato
+          if (!userProfile && cleanEmail === 'fintlyeducacion@gmail.com') {
             userProfile = {
-              ...userProfile,
-              ...demoUserDef,
-              role: demoUserDef.role,
-              school: demoUserDef.school || userProfile?.school || 'Fintly Campus Virtual',
+              email: cleanEmail,
+              name: firebaseUser.displayName || 'Fintly Educación (Admin)',
+              role: 'admin',
+              initials: 'FE',
+              school: 'Fintly Campus Virtual',
+              password: '123456'
             };
             try {
               await setDoc(doc(db, 'users', cleanEmail), userProfile);
-              console.log(`Auto-synced and upgraded user record for DEMO_USER: ${cleanEmail} to role: ${demoUserDef.role}`);
+              console.log(`Auto-created admin profile for ${cleanEmail} directly in Firestore.`);
             } catch (e) {
-              console.warn("Could not sync user record in database:", e);
+              console.error("Could not write initial admin profile to Firestore:", e);
+              handleFirestoreError(e, OperationType.WRITE, `users/${cleanEmail}`);
             }
           }
 
-          // Si el usuario tiene rol de admin/directivo, eliminar cualquier registro existente en la colección 'students' 
-          // para limpiarlo de la lista de alumnos e impedir que se comporte como tal.
-          try {
-            const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-            const studentDocRef = doc(db, 'students', studentDocId);
-            const studentDocSnap = await getDoc(studentDocRef);
-            if (studentDocSnap.exists()) {
-              await deleteDoc(studentDocRef);
-              console.log(`Successfully deleted student record for promoted admin/directivo user: ${cleanEmail}`);
-            }
-          } catch (e) {
-            console.warn("Could not check/delete student record for admin:", e);
-          }
-        }
-
-        // Si el usuario no existe en la colección 'users', verificar si está en 'students' (invitado)
-        if (!userProfile) {
-          try {
-            const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-            const studentSnap = await getDoc(doc(db, 'students', studentDocId));
-            if (studentSnap.exists()) {
-              const stData = studentSnap.data() as Student;
-              userProfile = {
-                email: cleanEmail,
-                name: stData.name,
-                role: 'alumno',
-                initials: stData.initials || stData.name[0].toUpperCase(),
-                level: stData.level,
-                school: stData.school || 'Northfield Sede Puertos',
-                password: '123456'
-              };
-              // Guardar el perfil en 'users' para habilitar logins híbridos en el futuro
-              await setDoc(doc(db, 'users', cleanEmail), userProfile);
-            }
-          } catch (e) {
-            console.error("Error checking student invitation on Google Sign-In:", e);
-            handleFirestoreError(e, OperationType.GET, `students/${cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_')}`);
-          }
-        }
-
-        // Si el usuario no existe en la base de datos (ni users ni students), creamos un perfil 'pausado' para aprobación directiva posterior
-        if (!userProfile) {
-          userProfile = {
-            email: cleanEmail,
-            name: firebaseUser.displayName || 'Usuario Nuevo',
-            role: 'pausado',
-            initials: firebaseUser.displayName 
-              ? firebaseUser.displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() 
-              : cleanEmail.slice(0, 2).toUpperCase(),
-            school: 'Northfield Sede Puertos',
-            password: '123456'
-          };
-          try {
-            await setDoc(doc(db, 'users', cleanEmail), userProfile);
-            console.log(`Auto-created user record for unregistered Google login: ${cleanEmail} with role: 'pausado'`);
-          } catch (e) {
-            console.error("Could not write 'pausado' profile to Firestore:", e);
-            handleFirestoreError(e, OperationType.WRITE, `users/${cleanEmail}`);
-          }
-        }
-
-        // Buscar si tiene datos actualizados en la colección de alumnos (students) - SOLO para alumnos
-        if (userProfile.role === 'alumno') {
-          try {
-            const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-            const studentSnap = await getDoc(doc(db, 'students', studentDocId));
-            if (studentSnap.exists()) {
-              const stData = studentSnap.data() as Student;
-              userProfile.level = stData.level;
-              userProfile.school = stData.school;
-              userProfile.name = stData.name;
-              userProfile.initials = stData.initials || stData.name[0].toUpperCase();
-              
-              // Marcar como registrado si no lo estaba
-              if (!stData.registered) {
-                await setDoc(doc(db, 'students', studentDocId), { registered: true }, { merge: true });
+          // Si el usuario tiene rol de admin/directivo en Firestore (sea demo o no),
+          // eliminamos cualquier registro existente en la colección 'students' para limpiarlo de la lista de alumnos.
+          if (userProfile && (userProfile.role === 'admin' || userProfile.role === 'directivo')) {
+            try {
+              const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
+              const studentDocRef = doc(db, 'students', studentDocId);
+              const studentDocSnap = await getDoc(studentDocRef);
+              if (studentDocSnap.exists()) {
+                await deleteDoc(studentDocRef);
+                console.log(`Successfully deleted student record for db admin/directivo user: ${cleanEmail}`);
               }
+            } catch (e) {
+              console.warn("Could not check/delete student record for admin:", e);
             }
-          } catch (e) {
-            console.error("Error matching student records:", e);
-            handleFirestoreError(e, OperationType.GET, `students/${cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_')}`);
           }
-        }
 
-        setCurrentUser(userProfile);
-        localStorage.setItem('fintly_logged_user', JSON.stringify(userProfile));
-        localStorage.setItem('fintly_login_provider', 'google');
+          // Si el usuario no existe en la colección 'users' y no es el administrador de Fintly, verificar si está en 'students' (invitado)
+          if (!userProfile) {
+            try {
+              const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
+              const studentSnap = await getDoc(doc(db, 'students', studentDocId));
+              if (studentSnap.exists()) {
+                const stData = studentSnap.data() as Student;
+                userProfile = {
+                  email: cleanEmail,
+                  name: stData.name,
+                  role: 'alumno',
+                  initials: stData.initials || stData.name[0].toUpperCase(),
+                  level: stData.level,
+                  school: stData.school || 'Northfield Sede Puertos',
+                  password: '123456'
+                };
+                // Guardar el perfil en 'users' para habilitar logins híbridos en el futuro
+                await setDoc(doc(db, 'users', cleanEmail), userProfile);
+              }
+            } catch (e) {
+              // No lanzar error limitante aquí para que el flujo de login no se cuelgue ante restricciones de permisos
+              console.warn("Ignored student status read error during initial signup (user may not be a student):", e);
+            }
+          }
 
-        // Enrutar al panel correspondiente de forma automática
-        if (userProfile.role === 'admin') {
-          setCurrentView('admin');
-        } else if (userProfile.role === 'directivo') {
-          setCurrentView('progress');
-        } else if (userProfile.role === 'pausado') {
-          setCurrentView('pausado');
+          // Si el usuario no existe en la base de datos (ni users ni students), creamos un perfil 'pausado' (pendiente) para aprobación
+          if (!userProfile) {
+            userProfile = {
+              email: cleanEmail,
+              name: firebaseUser.displayName || 'Usuario Nuevo',
+              role: 'pausado',
+              initials: firebaseUser.displayName 
+                ? firebaseUser.displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() 
+                : cleanEmail.slice(0, 2).toUpperCase(),
+              school: 'Northfield Sede Puertos',
+              password: '123456'
+            };
+            try {
+              await setDoc(doc(db, 'users', cleanEmail), userProfile);
+              console.log(`Auto-created user record for unregistered Google login: ${cleanEmail} with role: 'pausado'`);
+            } catch (e) {
+              console.error("Could not write 'pausado' profile to Firestore:", e);
+              handleFirestoreError(e, OperationType.WRITE, `users/${cleanEmail}`);
+            }
+          }
+
+          // Buscar si tiene datos actualizados en la colección de alumnos (students) - SOLO para alumnos
+          if (userProfile.role === 'alumno') {
+            try {
+              const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
+              const studentSnap = await getDoc(doc(db, 'students', studentDocId));
+              if (studentSnap.exists()) {
+                const stData = studentSnap.data() as Student;
+                userProfile.level = stData.level;
+                userProfile.school = stData.school;
+                userProfile.name = stData.name;
+                userProfile.initials = stData.initials || stData.name[0].toUpperCase();
+                
+                // Marcar como registrado si no lo estaba
+                if (!stData.registered) {
+                  await setDoc(doc(db, 'students', studentDocId), { registered: true }, { merge: true });
+                }
+              }
+            } catch (e) {
+              console.error("Error matching student records:", e);
+              handleFirestoreError(e, OperationType.GET, `students/${cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_')}`);
+            }
+          }
+
+          setCurrentUser(userProfile);
+          localStorage.setItem('fintly_logged_user', JSON.stringify(userProfile));
+          localStorage.setItem('fintly_login_provider', 'google');
+
+          // Enrutar al panel correspondiente de forma automática
+          if (userProfile.role === 'admin') {
+            setCurrentView('admin');
+          } else if (userProfile.role === 'directivo') {
+            setCurrentView('progress');
+          } else if (userProfile.role === 'pausado') {
+            setCurrentView('pausado');
+          } else {
+            setCurrentView('dashboard');
+          }
         } else {
-          setCurrentView('dashboard');
-        }
-      } else {
-        // Si no hay firebaseUser, ver si hay una sesión activa de correo/contraseña guardada
-        const saved = localStorage.getItem('fintly_logged_user');
-        const provider = localStorage.getItem('fintly_login_provider');
-        if (saved && provider === 'email') {
-          try {
-            const user = JSON.parse(saved) as User;
-            setCurrentUser(user);
-          } catch (err) {
-            localStorage.removeItem('fintly_logged_user');
-            localStorage.removeItem('fintly_login_provider');
+          // Si no hay firebaseUser, ver si hay una sesión activa de correo/contraseña guardada
+          const saved = localStorage.getItem('fintly_logged_user');
+          const provider = localStorage.getItem('fintly_login_provider');
+          if (saved && provider === 'email') {
+            try {
+              const user = JSON.parse(saved) as User;
+              setCurrentUser(user);
+            } catch (err) {
+              localStorage.removeItem('fintly_logged_user');
+              localStorage.removeItem('fintly_login_provider');
+              setCurrentUser(null);
+              setCurrentView('login');
+            }
+          } else {
             setCurrentUser(null);
             setCurrentView('login');
           }
-        } else {
-          setCurrentUser(null);
-          setCurrentView('login');
         }
+      } catch (err) {
+        console.error("General error in onAuthStateChanged wrapper:", err);
+      } finally {
+        setAuthInitialized(true);
       }
     });
 
@@ -274,7 +282,7 @@ export default function App() {
 
   // --- 3. ESCUCHAR CLASES REAL-TIME COMPLETAS ---
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !authInitialized) return;
 
     const classesRef = collection(db, 'classes');
     const unsubscribe = onSnapshot(classesRef, (snapshot) => {
@@ -331,11 +339,11 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, authInitialized]);
 
   // --- 4. ESCUCHAR SUBMISSIONS REAL-TIME (SEGÚN ROL) ---
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !authInitialized) return;
 
     let submissionsQuery;
     if (currentUser.role === 'admin' || currentUser.role === 'directivo') {
@@ -366,11 +374,11 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, authInitialized]);
 
   // --- 4B. ESCUCHAR UNIVERSAL DE USUARIOS PARA STAFF ---
   useEffect(() => {
-    if (!currentUser || (currentUser.role !== 'admin' && currentUser.role !== 'directivo')) {
+    if (!currentUser || !authInitialized || (currentUser.role !== 'admin' && currentUser.role !== 'directivo')) {
       setAllUsers([]);
       return;
     }
@@ -387,11 +395,11 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, authInitialized]);
 
   // --- 5. ESCUCHAR ESTUDIANTES REAL-TIME ---
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || !authInitialized) return;
 
     // SI NO ES STAFF, SOLO ESCUCHAR SU PROPIO REGISTRO DE ALUMNO (EVITA ERROR DE PERMISOS DE COLECCIÓN COMPLETA)
     if (currentUser.role !== 'admin' && currentUser.role !== 'directivo') {
@@ -483,7 +491,7 @@ export default function App() {
     });
 
     return () => unsubscribe();
-  }, [currentUser]);
+  }, [currentUser, authInitialized]);
 
   // Sincronizar el tema activo con la clase del body
   useEffect(() => {
@@ -590,16 +598,7 @@ export default function App() {
       handleFirestoreError(e, OperationType.GET, `students/${studentDocId}`);
     }
 
-    // 2. Si no existe, y es un demo user estático, usarlo
-    const isDemo = cleanEmail in DEMO_USERS;
-    if (!userProfile && isDemo) {
-      userProfile = DEMO_USERS[cleanEmail];
-      try {
-        await setDoc(doc(db, 'users', cleanEmail), userProfile);
-      } catch (e) {
-        console.warn("Failed to write demo user to Firestore:", e);
-      }
-    }
+
 
     // 3. Validar si existe en la base de datos
     if (!userProfile) {

@@ -38,7 +38,9 @@ service cloud.firestore {
     // 2. Users Collection
     match /users/{email} {
       allow read: if isSignedIn() && (isOwner(email) || isStaff());
-      allow create: if isSignedIn() && (isOwner(email) || isStaff()) && (isStaff() || request.resource.data.role == 'alumno');
+      allow create: if isSignedIn() && isOwner(email) && 
+                    (request.resource.data.role in ['alumno', 'pausado'] || 
+                     (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'));
       allow update: if isStaff() || (isOwner(email) && request.resource.data.role == resource.data.role);
       allow delete: if isStaff();
     }
@@ -51,7 +53,7 @@ service cloud.firestore {
 
     // 4. Students Collection
     match /students/{studentId} {
-      allow read: if isStaff() || (isSignedIn() && resource.data.email.lower() == emailOf(request.auth));
+      allow read: if isStaff() || (isSignedIn() && (resource == null || resource.data.email.lower() == emailOf(request.auth)));
       allow create: if isStaff() || (isSignedIn() && request.resource.data.email.lower() == emailOf(request.auth));
       allow update: if isStaff() || (isSignedIn() && resource.data.email.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'school']));
       allow delete: if isStaff();
@@ -59,7 +61,7 @@ service cloud.firestore {
 
     // 5. Submissions Collection
     match /submissions/{submissionId} {
-      allow get: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth));
+      allow get: if isStaff() || (isSignedIn() && (resource == null || resource.data.studentEmail.lower() == emailOf(request.auth)));
       allow list: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth));
       allow create: if isStaff() || (isSignedIn() && request.resource.data.studentEmail.lower() == emailOf(request.auth) && !request.resource.data.keys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']));
       allow update: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']));
