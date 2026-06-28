@@ -20,12 +20,17 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(email)).data;
     }
     
+    function isUserRole(email, role) {
+      return exists(/databases/$(database)/documents/users/$(email)) && 
+             getUserData(email).role == role;
+    }
+    
     function isStaff() {
       return isSignedIn() && 
              emailOf(request.auth) != "" &&
              (emailOf(request.auth) == "fintlyeducacion@gmail.com" ||
-              (exists(/databases/$(database)/documents/users/$(emailOf(request.auth))) && 
-               (getUserData(emailOf(request.auth)).role == 'admin' || getUserData(emailOf(request.auth)).role == 'directivo')));
+              isUserRole(emailOf(request.auth), 'admin') ||
+              isUserRole(emailOf(request.auth), 'directivo'));
     }
     
     function isOwner(email) {
