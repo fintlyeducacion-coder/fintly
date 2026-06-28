@@ -94,11 +94,7 @@ export default function AdminPanel({
   const [showEmailPreview, setShowEmailPreview] = useState(false);
 
   const ASSOCIATED_SCHOOLS = [
-    'Colegio del Faro, Sede Benavidez y Puertos',
-    'Northfield Sede Puertos',
-    'Northfield Sede Nordelta',
-    'South Greek School',
-    'Global School'
+    'Red itinere'
   ];
 
   // Filtramos por Syllabus para los indicadores generales del Admin
@@ -589,13 +585,10 @@ export default function AdminPanel({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setExpandedSchool(isExpanded ? null : school);
+                                setStudentSearchQuery(school);
+                                setActiveTab('rendimiento');
                               }}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all inline-flex items-center gap-1.5 shadow-sm border ${
-                                isExpanded
-                                  ? 'bg-violet-600 text-white border-violet-600'
-                                  : 'bg-neutral-900/60 hover:bg-neutral-850 text-gray-300 border-white/5 hover:text-white light:bg-neutral-100 light:text-neutral-700 light:border-neutral-200 light:hover:bg-neutral-200/80 light:hover:text-black'
-                              }`}
+                              className="px-3 py-1.5 rounded-xl text-xs font-semibold select-none cursor-pointer transition-all inline-flex items-center gap-1.5 shadow-sm border bg-neutral-900/60 hover:bg-violet-600 border-white/5 hover:border-violet-600 text-gray-300 hover:text-white light:bg-neutral-100 light:text-neutral-700 light:border-neutral-200 light:hover:bg-violet-600 light:hover:text-white light:hover:border-violet-600"
                             >
                               <Users className="w-3.5 h-3.5" />
                               <span>Alumnos</span>
@@ -621,147 +614,55 @@ export default function AdminPanel({
                           </div>
                         </div>
 
-                        {/* Expandable Section with details */}
-                        {isExpanded && (
-                          <div className="border-t border-white/5 light:border-neutral-100 p-6 pt-5 bg-neutral-950/20 light:bg-neutral-50/20 animate-fade-in space-y-4">
-                            {/* Table header with clean title */}
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/5 light:border-neutral-100 pb-3.5 mb-4 gap-3">
-                              <div className="text-[10.5px] uppercase font-mono font-bold text-violet-400 light:text-violet-600 tracking-widest">
-                                Monitoreo de Niveles
+                        {/* Expandable Section with details and smooth height transition */}
+                        <AnimatePresence initial={false}>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.35, ease: [0.04, 0.62, 0.23, 0.98] }}
+                              className="overflow-hidden"
+                            >
+                              <div className="border-t border-white/5 light:border-neutral-100 p-6 pt-5 bg-neutral-950/20 light:bg-neutral-50/20 space-y-4">
+                                {/* Table header with clean title */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-white/5 light:border-neutral-100 pb-3.5 mb-4 gap-3">
+                                  <div className="text-[10.5px] uppercase font-mono font-bold text-violet-400 light:text-violet-600 tracking-widest">
+                                    Monitoreo de Niveles
+                                  </div>
+                                  <div className="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest sm:text-right">
+                                    Syllabus y Habilitaciones
+                                  </div>
+                                </div>
+
+                                {/* MAIN LEVELS - SIMPLIFIED 2x2 GRID OF BOXES */}
+                                <div className="grid grid-cols-2 gap-3 max-w-sm mx-auto py-3">
+                                  {[0, 1, 2, 3].map((lvl) => {
+                                    const course = COURSES.find((c) => c.id === lvl) || { name: `Nivel ${lvl}` };
+                                    return (
+                                      <button
+                                        key={lvl}
+                                        type="button"
+                                        onClick={() => {
+                                          setActiveTab('clases');
+                                          setSelectedSyllabusLevel(lvl);
+                                        }}
+                                        className="liquid-glass-interactive flex flex-col items-center justify-center p-3.5 rounded-xl text-center aspect-[1.8/1] transition-all duration-300 group cursor-pointer"
+                                      >
+                                        <span className="text-violet-400 light:text-violet-600 font-mono font-bold text-[10px] uppercase tracking-wider mb-1">
+                                          Nivel {lvl}
+                                        </span>
+                                        <span className="text-white light:text-neutral-800 font-semibold text-xs group-hover:text-violet-300 light:group-hover:text-violet-700 transition-colors">
+                                          {course.name}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                              <div className="text-[10px] font-mono font-bold text-gray-500 uppercase tracking-widest sm:text-right">
-                                Syllabus y Habilitaciones
-                              </div>
-                            </div>
-
-                            {/* MAIN LEVELS TABLE (Original view) */}
-                              <div className="overflow-hidden overflow-x-auto shadow-inner rounded-xl">
-                                <table className="w-full text-left border-collapse min-w-[600px]">
-                                  <thead>
-                                    <tr className="border-b border-white/[0.03] light:border-neutral-150 bg-neutral-950/20 text-gray-500 text-[9px] tracking-wider font-bold uppercase font-mono">
-                                      <th className="px-3 py-2">Nivel</th>
-                                      <th className="px-3 py-2">Alumnos</th>
-                                      <th className="px-3 py-2">Clases Subidas</th>
-                                      <th className="px-3 py-2">Próxima Clase Programada</th>
-                                      <th className="px-3 py-2 text-right">Acciones Directas</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {[0, 1, 2, 3].map((lvl) => {
-                                      const levelStudents = stats.students.filter((st) => st.level === lvl);
-                                      const course = COURSES.find((c) => c.id === lvl) || { name: `Nivel ${lvl}` };
-                                      
-                                      // Calculamos clases asignadas de este nivel a este colegio
-                                      const assignedClasses = classes.filter(
-                                        cl => cl.level === lvl && cl.school?.toLowerCase() === school.toLowerCase() && !cl.isSyllabus
-                                      );
-                                      const maxWeekPub = assignedClasses.length > 0 
-                                        ? Math.max(...assignedClasses.map(cl => cl.week)) 
-                                        : 0;
-
-                                      // Buscamos en el syllabus master la proxima clase modelo 
-                                      const nextWeekNum = maxWeekPub + 1;
-                                      const nextSyllabusClass = classes.find(
-                                        cl => cl.isSyllabus && cl.level === lvl && cl.week === nextWeekNum
-                                      );
-
-                                      return (
-                                        <tr 
-                                          key={lvl} 
-                                          className="border-b border-white/[0.02] light:border-neutral-100 text-xs text-gray-300 light:text-neutral-700 hover:bg-white/[0.01] light:hover:bg-neutral-50/50 transition-colors"
-                                        >
-                                          {/* Nivel info */}
-                                          <td className="px-3 py-3 font-sans">
-                                            <span className="font-bold text-violet-400 light:text-violet-600 font-mono mr-1.5">[Nivel {lvl}]</span>
-                                            <span className="text-white light:text-neutral-800 font-medium">{course.name}</span>
-                                          </td>
-
-                                          {/* Cantidad Alumnos */}
-                                          <td className="px-3 py-3">
-                                            {levelStudents.length > 0 ? (
-                                              <span className="px-2 py-0.5 rounded-full bg-violet-950/40 border border-violet-500/20 text-violet-400 light:bg-violet-50 light:text-violet-600 text-[10px] font-semibold font-mono">
-                                                {levelStudents.length} alumn{levelStudents.length === 1 ? 'o' : 'os'}
-                                              </span>
-                                            ) : (
-                                              <span className="text-gray-600 light:text-neutral-400 italic text-[10.5px]">Ninguno</span>
-                                            )}
-                                          </td>
-
-                                          {/* Clases subidas */}
-                                          <td className="px-3 py-3 font-mono text-[11px] text-gray-400 light:text-neutral-600">
-                                            {assignedClasses.length > 0 ? (
-                                              <div className="flex items-center gap-1.5">
-                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                                <span>Semana {maxWeekPub} activa</span>
-                                              </div>
-                                            ) : (
-                                              <span className="text-gray-500 italic">Ninguna clase activa</span>
-                                            )}
-                                          </td>
-
-                                          {/* Visual unlocking assistant (próxima clase) */}
-                                          <td className="px-3 py-3">
-                                            {nextSyllabusClass ? (
-                                              <div className="space-y-0.5">
-                                                <div className="text-white light:text-neutral-800 font-medium line-clamp-1">
-                                                  Semana {nextWeekNum}: {nextSyllabusClass.title}
-                                                </div>
-                                                <span className="text-[9.5px] uppercase font-bold text-amber-500 font-mono tracking-wider flex items-center gap-1">
-                                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                                  Falta Programar
-                                                </span>
-                                              </div>
-                                            ) : (
-                                              <span className="text-emerald-500 font-semibold flex items-center gap-1 font-sans text-[11px]">
-                                                ✓ Al día con el Syllabus
-                                              </span>
-                                            )}
-                                          </td>
-
-                                          {/* Direct Action Buttons */}
-                                          <td className="px-3 py-3 text-right">
-                                            <div className="flex items-center justify-end gap-2">
-                                              {/* Monitor grades and students */}
-                                              <button
-                                                type="button"
-                                                onClick={() => {
-                                                  setActiveSchool(school);
-                                                  setActiveLevel(lvl);
-                                                }}
-                                                className="px-2.5 py-1.5 bg-neutral-900 border border-white/5 hover:bg-neutral-800 text-gray-300 rounded-lg text-[11px] font-semibold transition-all cursor-pointer light:bg-neutral-100 light:text-neutral-700 light:border-neutral-200 light:hover:bg-neutral-200 inline-flex items-center gap-1"
-                                              >
-                                                <span>Monitorear</span>
-                                                <ChevronRight className="w-3 h-3 text-gray-500" />
-                                              </button>
-
-                                              {/* Quick release content model */}
-                                              {nextSyllabusClass && (
-                                                <button
-                                                  type="button"
-                                                  onClick={() => {
-                                                    setClassToAssign(nextSyllabusClass);
-                                                    setAssignSelectedSchools([school]);
-                                                    setAssignUnlockAt(new Date().toISOString().substring(0, 16));
-                                                    setAssignDeadline(new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
-                                                    setAssignModalOpen(true);
-                                                  }}
-                                                  className="liquid-glass-btn px-4 py-2 text-[11px] inline-flex items-center gap-1.5"
-                                                  title="Planificar y subir la siguiente clase del Syllabus"
-                                                >
-                                                  <Plus className="w-3.5 h-3.5" />
-                                                  <span>Subir Semana {nextWeekNum}</span>
-                                                </button>
-                                              )}
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </div>
+                            </motion.div>
                           )}
+                        </AnimatePresence>
                         </div>
                       );
                     })}
@@ -1312,7 +1213,7 @@ export default function AdminPanel({
                   <div className="bg-neutral-900/40 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl overflow-hidden overflow-x-auto shadow-sm">
                     <table className="w-full text-left border-collapse min-w-[700px]">
                       <thead>
-                        <tr className="border-b border-white/5 light:border-neutral-100 bg-neutral-950/30 text-gray-500 text-[10px] tracking-wider font-bold uppercase font-mono">
+                        <tr className="border-b border-white/5 light:border-neutral-200 bg-neutral-950/30 light:bg-neutral-100 text-gray-500 light:text-neutral-600 text-[10px] tracking-wider font-bold uppercase font-mono">
                           <th className="px-4 py-3">Estudiante</th>
                           <th className="px-4 py-3">Colegio o Institución</th>
                           <th className="px-4 py-3">Nivel</th>
@@ -1459,10 +1360,10 @@ export default function AdminPanel({
 
                                 {/* Estado status badge */}
                                 <td className="px-4 py-3.5">
-                                  <span className={`px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded ${
+                                  <span className={`px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded font-mono ${
                                     computedStatus === 'warn'
-                                      ? 'bg-yellow-950/40 text-yellow-500 border border-yellow-500/10 font-mono'
-                                      : 'bg-green-950/40 text-green-400 border border-green-500/10 font-mono'
+                                      ? 'bg-yellow-950/40 text-yellow-500 border border-yellow-500/10 light:bg-amber-100 light:text-amber-800 light:border-amber-200/50'
+                                      : 'bg-green-950/40 text-green-400 border border-green-500/10 light:bg-emerald-100 light:text-emerald-800 light:border-emerald-200/50'
                                   }`}>
                                     {computedStatus === 'warn' ? 'Atrasado' : 'Al Día'}
                                   </span>
@@ -1716,7 +1617,7 @@ export default function AdminPanel({
               <div className="bg-neutral-900/40 light:bg-white rounded-2xl border border-white/5 light:border-neutral-200 overflow-hidden overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[600px]">
                   <thead>
-                    <tr className="border-b border-white/5 light:border-neutral-100 bg-neutral-950/30 text-gray-500 text-[10px] tracking-wider font-bold uppercase font-mono">
+                    <tr className="border-b border-white/5 light:border-neutral-200 bg-neutral-950/30 light:bg-neutral-100 text-gray-500 light:text-neutral-500 text-[10px] tracking-wider font-bold uppercase font-mono">
                       <th className="px-4 py-3">Nombre / Email</th>
                       <th className="px-4 py-3">Rol</th>
                       <th className="px-4 py-3">Colegio o Institución</th>
@@ -1746,10 +1647,10 @@ export default function AdminPanel({
                           <td className="px-4 py-3.5">
                             <span className={`px-2 py-0.5 uppercase text-[9px] font-bold tracking-widest rounded ${
                               u.role === 'admin' 
-                                ? 'bg-violet-950/40 text-violet-300 border border-violet-500/30' 
+                                ? 'bg-violet-950/40 text-violet-300 border border-violet-500/30 light:bg-violet-100 light:text-violet-800 light:border-violet-200' 
                                 : u.role === 'directivo' 
-                                  ? 'bg-indigo-950/40 text-indigo-300 border border-indigo-500/30' 
-                                  : 'bg-green-950/40 text-green-300 border border-green-500/30 font-mono'
+                                  ? 'bg-indigo-950/40 text-indigo-300 border border-indigo-500/30 light:bg-indigo-100 light:text-indigo-800 light:border-indigo-200' 
+                                  : 'bg-green-950/40 text-green-300 border border-green-500/30 light:bg-emerald-100 light:text-emerald-800 light:border-emerald-200 font-mono'
                             }`}>
                               {u.role === 'admin' ? 'Admin' : u.role === 'directivo' ? 'Directivo' : 'Alumno'}
                             </span>

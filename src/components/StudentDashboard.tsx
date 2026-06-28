@@ -168,7 +168,7 @@ export default function StudentDashboard({
         <div className="liquid-glass rounded-2xl p-5 flex flex-col justify-between shadow-lg hover:scale-[1.01] transition-transform">
           <div>
             <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Tu Entorno</span>
-            <h4 className="font-semibold text-sm text-white light:text-neutral-800 mt-1.5">{user.school || 'Northfield Sede Puertos'}</h4>
+            <h4 className="font-semibold text-sm text-white light:text-neutral-800 mt-1.5">{user.school || 'Red itinere'}</h4>
             <p className="text-gray-500 text-xs mt-1.5 leading-relaxed">
               Estás ingresando al Fintly Campus como alumno regular bajo la supervisión de tu establecimiento escolar. Tus respuestas son evaluadas individualmente.
             </p>

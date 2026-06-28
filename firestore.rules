@@ -13,7 +13,7 @@ service cloud.firestore {
     }
     
     function emailOf(auth) {
-      return auth.token.email.lower();
+      return auth.token.email == null ? "" : auth.token.email.lower();
     }
     
     function getUserData(email) {
@@ -22,12 +22,13 @@ service cloud.firestore {
     
     function isStaff() {
       return isSignedIn() && 
+             emailOf(request.auth) != "" &&
              exists(/databases/$(database)/documents/users/$(emailOf(request.auth))) && 
              (getUserData(emailOf(request.auth)).role == 'admin' || getUserData(emailOf(request.auth)).role == 'directivo');
     }
     
     function isOwner(email) {
-      return isSignedIn() && emailOf(request.auth) == email.lower();
+      return isSignedIn() && emailOf(request.auth) != "" && emailOf(request.auth) == email.lower();
     }
 
     // 1. Connection Test Collection
@@ -41,7 +42,7 @@ service cloud.firestore {
       allow create: if isSignedIn() && isOwner(email) && 
                     (request.resource.data.role in ['alumno', 'pausado'] || 
                      (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'));
-      allow update: if isStaff() || (isOwner(email) && request.resource.data.role == resource.data.role);
+      allow update: if (isOwner(email) && (request.resource.data.role == resource.data.role || (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'))) || isStaff();
       allow delete: if isStaff();
     }
 

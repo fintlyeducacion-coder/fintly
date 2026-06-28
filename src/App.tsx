@@ -36,6 +36,23 @@ import {
 import { handleFirestoreError, OperationType } from './firestore-errors';
 import { Clock } from 'lucide-react';
 
+const DEMO_EMAILS_TO_DELETE = [
+  'sofia@faro.edu.ar',
+  'lucas@faro.edu.ar',
+  'mateo@faro.edu.ar',
+  'alumno@fintly.pro',
+  'tomas@fintly.pro',
+  'camila@fintly.pro',
+  'vale@fintly.pro',
+  'nacho@fintly.pro',
+  'santiago@fintly.pro',
+  'felipe@fintly.pro',
+  'benja@southgreek.edu',
+  'delfi@southgreek.edu',
+  'emma@globalschool.edu',
+  'nico@globalschool.edu'
+];
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('fintly_logged_user');
@@ -133,8 +150,8 @@ export default function App() {
             handleFirestoreError(e, OperationType.GET, `users/${cleanEmail}`);
           }
 
-          // Si no existe, y es el administrador de Fintly Educación, se le da rol de admin y se guarda de inmediato
-          if (!userProfile && cleanEmail === 'fintlyeducacion@gmail.com') {
+          // Si es el administrador de Fintly Educación, se asegura de que tenga rol de admin y se guarda/actualiza de inmediato
+          if (cleanEmail === 'fintlyeducacion@gmail.com' && (!userProfile || userProfile.role !== 'admin')) {
             userProfile = {
               email: cleanEmail,
               name: firebaseUser.displayName || 'Fintly Educación (Admin)',
@@ -145,7 +162,7 @@ export default function App() {
             };
             try {
               await setDoc(doc(db, 'users', cleanEmail), userProfile);
-              console.log(`Auto-created admin profile for ${cleanEmail} directly in Firestore.`);
+              console.log(`Auto-created or healed admin profile for ${cleanEmail} directly in Firestore.`);
             } catch (e) {
               console.error("Could not write initial admin profile to Firestore:", e);
               handleFirestoreError(e, OperationType.WRITE, `users/${cleanEmail}`);
@@ -181,7 +198,7 @@ export default function App() {
                   role: 'alumno',
                   initials: stData.initials || stData.name[0].toUpperCase(),
                   level: stData.level,
-                  school: stData.school || 'Northfield Sede Puertos',
+                  school: stData.school || 'Red itinere',
                   password: '123456'
                 };
                 // Guardar el perfil en 'users' para habilitar logins híbridos en el futuro
@@ -202,7 +219,7 @@ export default function App() {
               initials: firebaseUser.displayName 
                 ? firebaseUser.displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() 
                 : cleanEmail.slice(0, 2).toUpperCase(),
-              school: 'Northfield Sede Puertos',
+              school: 'Red itinere',
               password: '123456'
             };
             try {
@@ -296,11 +313,7 @@ export default function App() {
         const seedClasses = async () => {
           try {
             const ASSOCIATED_SCHOOLS = [
-              'Colegio del Faro, Sede Benavidez y Puertos',
-              'Northfield Sede Puertos',
-              'Northfield Sede Nordelta',
-              'South Greek School',
-              'Global School'
+              'Red itinere'
             ];
             const initialSyllabus = DEFAULT_CLASSES.map(cl => ({ ...cl, isSyllabus: true }));
             const initialAssigned: ClassItem[] = [];
@@ -386,8 +399,24 @@ export default function App() {
     const usersRef = collection(db, 'users');
     const unsubscribe = onSnapshot(usersRef, (snapshot) => {
       const loaded: User[] = [];
-      snapshot.forEach((doc) => {
-        loaded.push(doc.data() as User);
+      snapshot.forEach((docSnap) => {
+        const u = docSnap.data() as User;
+        const cleanEmail = u.email?.toLowerCase().trim();
+        if (!cleanEmail) return;
+
+        // Ignorar localmente los correos de prueba eliminados
+        if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
+          return;
+        }
+        
+        // Corrección de visualización inmediata en memoria para consistencia
+        if (u.role === 'directivo' || u.role === 'alumno') {
+          u.school = 'Red itinere';
+        } else if (u.role === 'admin') {
+          u.school = 'Fintly Campus Virtual';
+        }
+
+        loaded.push(u);
       });
       setAllUsers(loaded);
     }, (error) => {
@@ -417,7 +446,7 @@ export default function App() {
             progress: 0,
             total: 16,
             status: 'ok',
-            school: currentUser.school || 'Northfield Sede Puertos'
+            school: currentUser.school || 'Red itinere'
           }]);
         }
       }, (error) => {
@@ -434,54 +463,21 @@ export default function App() {
         const cleanEmail = st.email?.toLowerCase().trim();
         if (!cleanEmail) return;
 
-        // Verificar si es un estudiante de demostración (demo student)
-        const isDemo = DEMO_STUDENTS.some(
-          (ds) => ds.email?.toLowerCase().trim() === cleanEmail
-        );
-
-        if (isDemo) {
-          if (!st.registered) {
-            // Asegurar que quede registrado en Firestore para mostrarse como "Activo"
-            const docId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-            setDoc(doc(db, 'students', docId), { registered: true }, { merge: true }).catch((err) =>
-              console.error("Error al registrar de forma transparente el estudiante demo:", err)
-            );
-          }
-          loaded.push({ ...st, registered: true });
-        } else if (st.registered !== true) {
-          // El alumno está pendiente de registro. Por directiva del usuario, los eliminamos del campus virtual de manera definitiva
-          const docId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-          console.log(`Eliminando automáticamente alumno de prueba/pendiente de registro: ${cleanEmail}`);
-          deleteDoc(doc(db, 'students', docId)).catch((err) =>
-            console.error("Error al eliminar alumno pendiente de registro en Firestore:", err)
-          );
-          deleteDoc(doc(db, 'users', cleanEmail)).catch((err) =>
-            console.error("Error al eliminar usuario pendiente de registro en Firestore:", err)
-          );
-        } else {
-          loaded.push(st);
+        // Ignorar localmente los correos de prueba eliminados
+        if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
+          return;
         }
-      });
 
-      if (loaded.length === 0 && currentUser.role === 'admin') {
-        const seedStudents = async () => {
-          try {
-            for (const st of DEMO_STUDENTS) {
-              const docId = st.email ? st.email.replace(/[^a-zA-Z0-9_.-]/g, '_') : st.name.replace(/[^a-zA-Z0-9]/g, '_');
-              await setDoc(doc(db, 'students', docId), st);
-            }
-          } catch (err) {
-            console.error("Could not seed database student records:", err);
-          }
-        };
-        seedStudents();
-      } else {
-        setStudentsByState(loaded);
-      }
+        // Corrección de visualización inmediata en memoria para consistencia
+        st.school = 'Red itinere';
+
+        loaded.push(st);
+      });
+      setStudentsByState(loaded);
     }, (error) => {
       if (currentUserRef.current?.role !== 'admin' && currentUserRef.current?.role !== 'directivo') {
-        console.warn("Ignored collection-level students error for non-staff:", error);
-        return;
+         console.warn("Ignored collection-level students error for non-staff:", error);
+         return;
       }
       if (auth.currentUser?.email?.toLowerCase() !== currentUserRef.current?.email?.toLowerCase()) {
         console.warn("Ignored Firestore permission error during user transition phase:", error);
@@ -491,6 +487,73 @@ export default function App() {
     });
 
     return () => unsubscribe();
+  }, [currentUser, authInitialized]);
+
+  // --- 5B. ONE-TIME DATABASE HEALING & CLEANUP (ASÍNCRONO Y DE BAJO IMPACTO) ---
+  useEffect(() => {
+    if (!currentUser || !authInitialized) return;
+    if (currentUser.role !== 'admin' && currentUser.role !== 'directivo') return;
+
+    const runDatabaseHealing = async () => {
+      try {
+        console.log("Healing DB: Deleting demo users and updating schools...");
+        
+        // 1. Eliminar todos los alumnos/usuarios de prueba que estén en la base de datos
+        for (const email of DEMO_EMAILS_TO_DELETE) {
+          const studentDocId = email.replace(/[^a-zA-Z0-9_.-]/g, '_');
+          deleteDoc(doc(db, 'students', studentDocId)).catch(() => {});
+          deleteDoc(doc(db, 'users', email)).catch(() => {});
+        }
+
+        // 2. Normalizar colegios de usuarios reales en Firestore
+        const usersSnap = await getDocs(collection(db, 'users'));
+        for (const userDoc of usersSnap.docs) {
+          const u = userDoc.data() as User;
+          const cleanEmail = u.email?.toLowerCase().trim();
+          if (!cleanEmail) continue;
+
+          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
+            await deleteDoc(doc(db, 'users', cleanEmail)).catch(() => {});
+            continue;
+          }
+
+          let targetSchool = u.school;
+          if (u.role === 'directivo' || u.role === 'alumno') {
+            targetSchool = 'Red itinere';
+          } else if (u.role === 'admin') {
+            targetSchool = 'Fintly Campus Virtual';
+          }
+
+          if (u.school !== targetSchool) {
+            await setDoc(doc(db, 'users', cleanEmail), { school: targetSchool }, { merge: true });
+            console.log(`[Heal] Updated school for user ${cleanEmail} -> ${targetSchool}`);
+          }
+        }
+
+        // 3. Normalizar colegios de alumnos reales en Firestore
+        const studentsSnap = await getDocs(collection(db, 'students'));
+        for (const studentDoc of studentsSnap.docs) {
+          const st = studentDoc.data() as Student;
+          const cleanEmail = st.email?.toLowerCase().trim();
+          if (!cleanEmail) continue;
+
+          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
+            await deleteDoc(doc(db, 'students', studentDoc.id)).catch(() => {});
+            continue;
+          }
+
+          if (st.school !== 'Red itinere') {
+            await setDoc(doc(db, 'students', studentDoc.id), { school: 'Red itinere' }, { merge: true });
+            console.log(`[Heal] Updated school for student record ${cleanEmail} -> Red itinere`);
+          }
+        }
+        console.log("Database healing completed!");
+      } catch (err) {
+        console.warn("Could not execute full database healing (possible read/write restriction):", err);
+      }
+    };
+
+    runDatabaseHealing();
   }, [currentUser, authInitialized]);
 
   // Sincronizar el tema activo con la clase del body
@@ -586,7 +649,7 @@ export default function App() {
             role: 'alumno',
             initials: studentData.initials || studentData.name[0].toUpperCase(),
             level: studentData.level,
-            school: studentData.school || 'Northfield Sede Puertos',
+            school: studentData.school || 'Red itinere',
             password: '123456' // Contraseña por defecto para alumnos invitados
           };
           await setDoc(doc(db, 'users', cleanEmail), userProfile);
@@ -918,11 +981,23 @@ export default function App() {
         return;
       }
       const existingData = userSnap.data() as User;
+      let finalSchool = 'Red itinere';
+      if (targetRole === 'admin') {
+        finalSchool = 'Fintly Campus Virtual';
+      } else if (targetRole === 'directivo') {
+        finalSchool = 'Red itinere';
+      } else if (targetRole === 'alumno') {
+        finalSchool = school || existingData.school || 'Red itinere';
+        if (finalSchool !== 'Red itinere') {
+          finalSchool = 'Red itinere';
+        }
+      }
+
       const updatedUser: User = {
         ...existingData,
         role: targetRole,
         level: level !== undefined ? level : (existingData.level || 0),
-        school: school || existingData.school || 'Northfield Sede Puertos'
+        school: finalSchool
       };
 
       await setDoc(userRef, updatedUser);
@@ -939,7 +1014,7 @@ export default function App() {
           email: cleanEmail,
           initials: updatedUser.initials || updatedUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
           level: updatedUser.level || 0,
-          school: updatedUser.school || 'Northfield Sede Puertos',
+          school: finalSchool,
           progress: studentSnap.exists() ? (studentSnap.data() as Student).progress : 0,
           total: studentSnap.exists() ? (studentSnap.data() as Student).total : 16,
           status: studentSnap.exists() ? (studentSnap.data() as Student).status : 'ok',

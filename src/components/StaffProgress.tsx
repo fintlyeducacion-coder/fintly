@@ -30,11 +30,7 @@ interface StaffProgressProps {
 }
 
 const ASSOCIATED_SCHOOLS = [
-  'Colegio del Faro, Sede Benavidez y Puertos',
-  'Northfield Sede Puertos',
-  'Northfield Sede Nordelta',
-  'South Greek School',
-  'Global School'
+  'Red itinere'
 ];
 
 export default function StaffProgress({

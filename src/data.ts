@@ -42,31 +42,7 @@ export const DEMO_USERS: Record<string, User> = {
   'fintlyeducacion@gmail.com': { name: 'Fintly Educación (Admin)', role: 'admin', initials: 'FE', email: 'fintlyeducacion@gmail.com', password: '123456' }
 };
 
-export const DEMO_STUDENTS: Student[] = [
-  // Colegio del Faro, Sede Benavidez y Puertos
-  { name: 'Sofía Rodríguez', email: 'sofia@faro.edu.ar', initials: 'SR', level: 0, progress: 2, total: 16, status: 'ok', school: 'Colegio del Faro, Sede Benavidez y Puertos', registered: true },
-  { name: 'Lucas Martínez', email: 'lucas@faro.edu.ar', initials: 'LM', level: 0, progress: 1, total: 16, status: 'ok', school: 'Colegio del Faro, Sede Benavidez y Puertos', registered: true },
-  { name: 'Mateo Díaz', email: 'mateo@faro.edu.ar', initials: 'MD', level: 1, progress: 3, total: 16, status: 'ok', school: 'Colegio del Faro, Sede Benavidez y Puertos', registered: true },
-
-  // Northfield Sede Puertos (niveles 0 y 1 como solicitó el usuario)
-  { name: 'Martina López', email: 'alumno@fintly.pro', initials: 'ML', level: 0, progress: 2, total: 16, status: 'ok', school: 'Northfield Sede Puertos', registered: true },
-  { name: 'Tomás Fernández', email: 'tomas@fintly.pro', initials: 'TF', level: 0, progress: 1, total: 16, status: 'ok', school: 'Northfield Sede Puertos', registered: true },
-  { name: 'Camila Torres', email: 'camila@fintly.pro', initials: 'CT', level: 1, progress: 5, total: 16, status: 'ok', school: 'Northfield Sede Puertos', registered: true },
-
-  // Northfield Sede Nordelta (niveles 0, 1, 2 y 3 como solicitó el usuario)
-  { name: 'Valentina Cruz', email: 'vale@fintly.pro', initials: 'VC', level: 0, progress: 12, total: 16, status: 'ok', school: 'Northfield Sede Nordelta', registered: true },
-  { name: 'Ignacio Ruiz', email: 'nacho@fintly.pro', initials: 'IR', level: 1, progress: 2, total: 16, status: 'warn', school: 'Northfield Sede Nordelta', registered: true },
-  { name: 'Santiago Gómez', email: 'santiago@fintly.pro', initials: 'SG', level: 2, progress: 4, total: 16, status: 'ok', school: 'Northfield Sede Nordelta', registered: true },
-  { name: 'Felipe Herrera', email: 'felipe@fintly.pro', initials: 'FH', level: 3, progress: 8, total: 16, status: 'ok', school: 'Northfield Sede Nordelta', registered: true },
-
-  // South Greek School
-  { name: 'Benjamín Castro', email: 'benja@southgreek.edu', initials: 'BC', level: 0, progress: 1, total: 16, status: 'ok', school: 'South Greek School', registered: true },
-  { name: 'Delfina Ortiz', email: 'delfi@southgreek.edu', initials: 'DO', level: 2, progress: 6, total: 16, status: 'ok', school: 'South Greek School', registered: true },
-
-  // Global School
-  { name: 'Emma Watson', email: 'emma@globalschool.edu', initials: 'EW', level: 1, progress: 7, total: 16, status: 'ok', school: 'Global School', registered: true },
-  { name: 'Nicolás Vázquez', email: 'nico@globalschool.edu', initials: 'NV', level: 2, progress: 9, total: 16, status: 'ok', school: 'Global School', registered: true }
-];
+export const DEMO_STUDENTS: Student[] = [];
 
 export const DEFAULT_CLASSES: ClassItem[] = [
   {
