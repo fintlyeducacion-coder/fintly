@@ -733,7 +733,31 @@ export default function App() {
 
   // Abrir vista detallada de una clase
   const handleOpenClass = (level: number, week: number) => {
-    const targetClass = classes.find((cl) => cl.level === level && cl.week === week);
+    let targetClass: ClassItem | undefined;
+
+    if (currentUser && currentUser.role === 'alumno') {
+      // Priorizar la clase asignada al colegio del alumno (que no sea Syllabus)
+      targetClass = classes.find(
+        (cl) =>
+          cl.level === level &&
+          cl.week === week &&
+          cl.school?.toLowerCase() === currentUser.school?.toLowerCase() &&
+          !cl.isSyllabus
+      );
+    }
+
+    // Si no se encontró (o no es alumno), buscar la clase asignada o la primera que coincida
+    if (!targetClass) {
+      targetClass = classes.find(
+        (cl) => cl.level === level && cl.week === week && !cl.isSyllabus
+      );
+    }
+    if (!targetClass) {
+      targetClass = classes.find(
+        (cl) => cl.level === level && cl.week === week
+      );
+    }
+
     if (targetClass) {
       setActiveClassItem(targetClass);
       setCurrentView('classview');

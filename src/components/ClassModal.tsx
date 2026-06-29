@@ -9,8 +9,10 @@ import { ClassItem } from '../types';
 interface ClassModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (classItem: ClassItem) => void;
+  onSave: (classItem: ClassItem, keepOpen?: boolean) => void;
   initialClass: ClassItem | null;
+  associatedSchools?: string[];
+  onAssignClass?: (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => void | Promise<void>;
 }
 
 function getEmbedUrl(input: string): string {
@@ -60,7 +62,9 @@ export default function ClassModal({
   isOpen,
   onClose,
   onSave,
-  initialClass
+  initialClass,
+  associatedSchools = [],
+  onAssignClass
 }: ClassModalProps) {
   const [level, setLevel] = useState(0);
   const [week, setWeek] = useState(1);
@@ -76,6 +80,18 @@ export default function ClassModal({
   const [previewTab, setPreviewTab] = useState<'content' | 'video' | 'slides' | 'activity'>('content');
   const [hasDraft, setHasDraft] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState('');
+
+  // States for Direct Publishing & Confirmation
+  const [isPublishingNow, setIsPublishingNow] = useState(false);
+  const [publishSchools, setPublishSchools] = useState<string[]>([]);
+  const [publishUnlockAt, setPublishUnlockAt] = useState('');
+  const [publishDeadline, setPublishDeadline] = useState('');
+  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [confirmationData, setConfirmationData] = useState<{
+    schools: string[];
+    unlockAt: string;
+    isScheduled: boolean;
+  } | null>(null);
 
   // 1. Check for drafts on load
   useEffect(() => {
@@ -167,6 +183,20 @@ export default function ClassModal({
   useEffect(() => {
     setIsPreviewOpen(false);
     setPreviewTab('content');
+    setIsPublishingNow(false);
+    setShowConfirmation(false);
+    setConfirmationData(null);
+
+    // Initialize publish fields
+    const schoolsList = associatedSchools || [
+      'Colegio IDES',
+      'Colegio San Martín',
+      'Colegio Belgrano',
+      'Colegio Sarmiento'
+    ];
+    setPublishSchools(schoolsList);
+    setPublishUnlockAt(initialClass?.unlockAt || new Date().toISOString().substring(0, 16));
+    setPublishDeadline(initialClass?.deadline || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
 
     if (initialClass) {
       setLevel(initialClass.level);
@@ -213,34 +243,34 @@ export default function ClassModal({
         setActDesc('');
       }
     }
-  }, [initialClass, isOpen]);
+  }, [initialClass, isOpen, associatedSchools]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-
+  // Validation function
+  const validateFields = (): string | null => {
     if (!title.trim() || !week) {
-      alert('Por favor completa al menos la semana y el título.');
-      return;
+      return 'Por favor completa al menos la semana y el título.';
     }
 
     const trimmedVideo = videoId.trim();
     if (!trimmedVideo) {
-      alert('Por favor ingresa el enlace (link) completo de YouTube.');
-      return;
+      return 'Por favor ingresa el enlace (link) completo de YouTube.';
     }
 
     const isYoutubeUrl = trimmedVideo.includes('youtube.com') || trimmedVideo.includes('youtu.be');
     if (!isYoutubeUrl) {
-      alert('Por favor, pega el link completo de YouTube, no solo el ID (ejemplo: https://www.youtube.com/watch?v=dQw4w9WgXcQ).');
-      return;
+      return 'Por favor, pega el link completo de YouTube, no solo el ID (ejemplo: https://www.youtube.com/watch?v=dQw4w9WgXcQ).';
     }
 
     const extractedId = extractYoutubeId(trimmedVideo);
     if (!extractedId || extractedId === trimmedVideo) {
-      alert('No se pudo extraer un ID de video válido de la URL de YouTube ingresada. Asegúrate de que represente un link válido.');
-      return;
+      return 'No se pudo extraer un ID de video válido de la URL de YouTube ingresada. Asegúrate de que represente un link válido.';
     }
 
+    return null;
+  };
+
+  // Helper to build class item
+  const buildClassItem = (extractedId: string): ClassItem => {
     // Convertimos de Markdown ultra simple/texto plano de vuelta a los tags HTML de Martina
     let htmlText = text.trim();
     if (htmlText) {
@@ -259,7 +289,7 @@ export default function ClassModal({
         .join('');
     }
 
-    const classItem: ClassItem = {
+    return {
       level,
       week: Number(week),
       title: title.trim(),
@@ -271,12 +301,306 @@ export default function ClassModal({
       actTitle: actTitle.trim(),
       actDesc: actDesc.trim(),
     };
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const validationError = validateFields();
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+
+    const extractedId = extractYoutubeId(videoId.trim());
+    const classItem = buildClassItem(extractedId);
 
     localStorage.removeItem('fintly_class_draft');
     onSave(classItem);
   };
 
+  const handleDirectPublishClick = () => {
+    const validationError = validateFields();
+    if (validationError) {
+      alert(validationError);
+      return;
+    }
+    setIsPublishingNow(true);
+  };
+
+  const handleConfirmPublish = async () => {
+    if (publishSchools.length === 0) {
+      alert('Por favor selecciona al menos un colegio para publicar la clase.');
+      return;
+    }
+
+    const extractedId = extractYoutubeId(videoId.trim());
+    const classItem = buildClassItem(extractedId);
+
+    try {
+      // 1. Guardar la clase en el Syllabus (usando keepOpen = true para evitar el cierre inmediato)
+      onSave(classItem, true);
+
+      // 2. Asignar/subir la clase a los colegios seleccionados
+      if (onAssignClass) {
+        await onAssignClass(classItem, publishSchools, publishUnlockAt, publishDeadline);
+      }
+
+      // 3. Limpiar borradores
+      localStorage.removeItem('fintly_class_draft');
+
+      // 4. Configurar datos de confirmación
+      const isScheduled = publishUnlockAt ? new Date(publishUnlockAt) > new Date() : false;
+      setConfirmationData({
+        schools: publishSchools,
+        unlockAt: publishUnlockAt,
+        isScheduled,
+      });
+      setShowConfirmation(true);
+    } catch (error) {
+      console.error("Error al subir la clase directamente:", error);
+      alert("Hubo un error al subir la clase. Por favor vuelve a intentarlo.");
+    }
+  };
+
   if (!isOpen) return null;
+
+  // 1. CONFIRMATION VIEW
+  if (showConfirmation && confirmationData) {
+    return (
+      <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto no-scrollbar">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.3 }}
+          className="bg-[#0f0f22] light:bg-white border border-violet-900/40 light:border-neutral-200 rounded-3xl w-full max-w-md p-8 flex flex-col items-center text-center shadow-2xl"
+        >
+          <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center text-emerald-400 light:bg-emerald-50 light:text-emerald-600 mb-6 border border-emerald-500/25">
+            <CheckCircle2 className="w-10 h-10 animate-bounce" />
+          </div>
+
+          <h3 className="font-display font-extrabold text-white light:text-neutral-900 text-2xl mb-2">
+            {confirmationData.isScheduled ? '¡Clase Programada!' : '¡Clase Subida con Éxito!'}
+          </h3>
+
+          <p className="text-gray-450 light:text-neutral-600 text-sm max-w-sm mb-6 leading-relaxed">
+            {confirmationData.isScheduled ? (
+              <span>
+                La clase <strong>"{title}"</strong> ha sido guardada en el Syllabus y programada correctamente. Se habilitará de forma automática para los alumnos.
+              </span>
+            ) : (
+              <span>
+                La clase <strong>"{title}"</strong> ha sido guardada en el Syllabus y publicada directamente. Ya está disponible para los alumnos.
+              </span>
+            )}
+          </p>
+
+          <div className="w-full bg-[#14132b]/50 light:bg-neutral-50 border border-white/5 light:border-neutral-200 rounded-2xl p-5 mb-8 text-left space-y-3.5">
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-1">
+                Colegios asignados ({confirmationData.schools.length})
+              </span>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {confirmationData.schools.map((s) => (
+                  <span key={s} className="px-2.5 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 light:bg-violet-50 light:text-violet-700 light:border-violet-100 text-xs font-medium">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-1">
+                Estado y Planificación
+              </span>
+              <div className="flex items-center gap-2 text-xs text-white light:text-neutral-800 font-semibold mt-1">
+                <Clock className="w-4 h-4 text-violet-400 light:text-violet-600 shrink-0" />
+                <span>
+                  {confirmationData.isScheduled ? (
+                    <span className="text-amber-400 light:text-amber-700 font-bold">
+                      Programada para el: {(() => {
+                        const d = new Date(confirmationData.unlockAt);
+                        return d.toLocaleDateString('es-AR', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        });
+                      })()}
+                    </span>
+                  ) : (
+                    <span className="text-emerald-400 light:text-emerald-600 font-bold">
+                      Publicada de inmediato (Live)
+                    </span>
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setShowConfirmation(false);
+              onClose();
+            }}
+            className="liquid-glass-btn w-full py-3.5 px-6 rounded-xl text-sm font-bold shadow-lg shadow-violet-950/20 cursor-pointer text-center"
+          >
+            Aceptar y Finalizar
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // 2. DIRECT PUBLISHING CONFIGURATION VIEW
+  if (isPublishingNow) {
+    const schoolsList = associatedSchools || [
+      'Colegio IDES',
+      'Colegio San Martín',
+      'Colegio Belgrano',
+      'Colegio Sarmiento'
+    ];
+    return (
+      <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto no-scrollbar">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.3 }}
+          className="bg-[#0f0f22] light:bg-white border border-violet-900/40 light:border-neutral-200 rounded-3xl w-full max-w-lg flex flex-col overflow-hidden shadow-2xl max-h-[90vh]"
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-gray-850 light:border-neutral-200 p-6 bg-white/[0.02] light:bg-neutral-50/50">
+            <div className="flex items-center gap-2">
+              <Clock className="w-5 h-5 text-violet-400 light:text-violet-600" />
+              <h3 className="font-display font-extrabold text-white light:text-neutral-900 text-lg">
+                Configurar publicación directa
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPublishingNow(false)}
+              className="w-8 h-8 rounded-lg bg-white/5 light:bg-neutral-100 hover:bg-white/10 light:hover:bg-neutral-200 text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800 flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Form Content */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+            {/* Quick reminder card */}
+            <div className="bg-violet-950/15 border border-violet-500/20 rounded-2xl p-4 flex gap-3 text-xs leading-relaxed text-violet-300 light:bg-violet-50/50 light:text-violet-750 light:border-violet-100">
+              <BookOpen className="w-4 h-4 shrink-0 text-violet-400 light:text-violet-600 mt-0.5" />
+              <div>
+                Al subir la clase, esta se guardará como plantilla en el <strong>Syllabus Académico</strong> y se asignará automáticamente a los colegios que marques abajo con las fechas que configures.
+              </div>
+            </div>
+
+            {/* School Selector */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider">
+                  Colegios donde publicar esta clase
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (publishSchools.length === schoolsList.length) {
+                      setPublishSchools([]);
+                    } else {
+                      setPublishSchools([...schoolsList]);
+                    }
+                  }}
+                  className="text-[10px] text-violet-400 light:text-violet-700 font-bold hover:underline cursor-pointer"
+                >
+                  {publishSchools.length === schoolsList.length ? 'Desmarcar todos' : 'Marcar todos'}
+                </button>
+              </div>
+
+              <div className="space-y-1.5 border border-white/5 light:border-neutral-200 bg-black/10 light:bg-neutral-50 p-4 rounded-xl">
+                {schoolsList.map((schoolName) => {
+                  const isSelected = publishSchools.includes(schoolName);
+                  return (
+                    <label
+                      key={schoolName}
+                      className="flex items-start gap-2.5 p-1.5 hover:bg-white/[0.02] light:hover:bg-neutral-105 rounded-lg cursor-pointer text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {
+                          if (isSelected) {
+                            setPublishSchools(publishSchools.filter((name) => name !== schoolName));
+                          } else {
+                            setPublishSchools([...publishSchools, schoolName]);
+                          }
+                        }}
+                        className="mt-0.5 rounded text-violet-500 focus:ring-violet-500 cursor-pointer"
+                      />
+                      <span className="text-white light:text-neutral-800 font-medium leading-tight">
+                        {schoolName}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Dates row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
+                  Habilitar desde el (Unlock)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={publishUnlockAt}
+                  onChange={(e) => setPublishUnlockAt(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+                />
+                <span className="text-[10px] text-gray-500 block">
+                  Si dejas la fecha actual, los alumnos podrán verla inmediatamente. Si ingresas una fecha futura, quedará programada.
+                </span>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
+                  Límite de Entrega (Deadline)
+                </label>
+                <input
+                  type="datetime-local"
+                  value={publishDeadline}
+                  onChange={(e) => setPublishDeadline(e.target.value)}
+                  className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer Actions */}
+          <div className="bg-white/2 light:bg-neutral-50 border-t border-gray-850 light:border-neutral-200 p-6 flex justify-end gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsPublishingNow(false)}
+              className="px-5 py-2.5 bg-white/5 light:bg-neutral-100 hover:bg-white/10 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white light:hover:text-neutral-900 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+            >
+              Volver a Editar
+            </button>
+            <button
+              onClick={handleConfirmPublish}
+              disabled={publishSchools.length === 0}
+              className="liquid-glass-btn flex items-center gap-2 px-6 py-2.5 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-center"
+            >
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              <span>Confirmar y Subir ahora</span>
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto no-scrollbar">
@@ -593,6 +917,14 @@ export default function ClassModal({
               className="px-5 py-2.5 bg-white/5 light:bg-neutral-100 hover:bg-white/10 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white light:hover:text-neutral-900 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
             >
               Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleDirectPublishClick}
+              className="px-5 py-2.5 bg-violet-900/40 border border-violet-500/35 hover:bg-violet-900/60 light:bg-violet-50 light:border-violet-200 text-violet-400 hover:text-white light:text-violet-600 light:hover:bg-violet-100/80 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <Clock className="w-4 h-4 shrink-0 animate-pulse" />
+              <span>Subir ahora</span>
             </button>
             <button
               onClick={handleSubmit}

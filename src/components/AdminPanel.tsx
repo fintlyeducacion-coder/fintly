@@ -58,6 +58,19 @@ export default function AdminPanel({
   const [assignSelectedSchools, setAssignSelectedSchools] = useState<string[]>([]);
   const [assignUnlockAt, setAssignUnlockAt] = useState<string>('');
   const [assignDeadline, setAssignDeadline] = useState<string>('');
+  const [showAssignSuccess, setShowAssignSuccess] = useState(false);
+  const [assignSuccessData, setAssignSuccessData] = useState<{
+    schools: string[];
+    unlockAt: string;
+    title: string;
+    isScheduled: boolean;
+  } | null>(null);
+
+  // "Todas las clases subidas" states
+  const [showAllAssignedModal, setShowAllAssignedModal] = useState(false);
+  const [assignedSearchTerm, setAssignedSearchTerm] = useState('');
+  const [assignedFilterSchool, setAssignedFilterSchool] = useState('todos');
+  const [assignedFilterLevel, setAssignedFilterLevel] = useState('todos');
 
   // Class Editor modal
   const [modalOpen, setModalOpen] = useState(false);
@@ -142,7 +155,7 @@ export default function AdminPanel({
     setModalOpen(true);
   };
 
-  const handleSave = (classItem: ClassItem) => {
+  const handleSave = (classItem: ClassItem, keepOpen?: boolean) => {
     const isSyllabusEditor = activeTab === 'clases';
     
     // Asignar el alcance correspondiente (Syllabus unificado o específico del Colegio actual)
@@ -157,8 +170,10 @@ export default function AdminPanel({
     } else {
       onSaveClass(scopedItem);
     }
-    setModalOpen(false);
-    setEditingClass(null);
+    if (!keepOpen) {
+      setModalOpen(false);
+      setEditingClass(null);
+    }
   };
 
   const getResourcesString = (cl: ClassItem) => {
@@ -1419,13 +1434,24 @@ export default function AdminPanel({
                 </h2>
               </div>
 
-              <button
-                onClick={() => handleCreatePreConfiguredClick(selectedSyllabusLevel)}
-                className="liquid-glass-btn inline-flex items-center gap-2 px-5 py-2.5 text-xs select-none"
-              >
-                <Plus className="w-4 h-4 shrink-0" />
-                <span>Crear clase para Nivel {selectedSyllabusLevel}</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setShowAllAssignedModal(true)}
+                  className="px-4.5 py-2.5 bg-violet-950/40 border border-violet-500/35 hover:bg-violet-900/40 light:bg-violet-50 light:border-violet-200 text-violet-300 light:text-violet-700 light:hover:bg-violet-100 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2"
+                >
+                  <BookOpen className="w-4 h-4 shrink-0" />
+                  <span>Todas las clases subidas</span>
+                </button>
+
+                <button
+                  onClick={() => handleCreatePreConfiguredClick(selectedSyllabusLevel)}
+                  className="liquid-glass-btn inline-flex items-center gap-2 px-5 py-2.5 text-xs select-none"
+                >
+                  <Plus className="w-4 h-4 shrink-0" />
+                  <span>Crear clase para Nivel {selectedSyllabusLevel}</span>
+                </button>
+              </div>
             </div>
 
             {/* Level Selector Pills with fluid animation */}
@@ -1529,6 +1555,8 @@ export default function AdminPanel({
                             setAssignUnlockAt(new Date().toISOString().substring(0, 16));
                             setAssignDeadline(new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
                             setAssignModalOpen(true);
+                            setShowAssignSuccess(false);
+                            setAssignSuccessData(null);
                           }}
                           className="liquid-glass-btn inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold select-none cursor-pointer"
                         >
@@ -1694,6 +1722,8 @@ export default function AdminPanel({
             }}
             onSave={handleSave}
             initialClass={editingClass}
+            associatedSchools={ASSOCIATED_SCHOOLS}
+            onAssignClass={onAssignClass}
           />
         )}
       </AnimatePresence>
@@ -1708,119 +1738,427 @@ export default function AdminPanel({
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-[#0f0f20] light:bg-white border border-violet-900/[0.15] light:border-neutral-200 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-fade-in"
             >
-              <div className="p-6 border-b border-white/5 light:border-neutral-200 flex justify-between items-center bg-white/[0.02] light:bg-neutral-50/50">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-violet-400 light:text-violet-600 font-mono">
-                    Planificar Lanzamiento Académico
-                  </span>
-                  <h3 className="text-white light:text-neutral-900 font-sans font-bold text-sm mt-0.5">
-                    Subir Clase: Semana {classToAssign.week} · Nivel {classToAssign.level}
+              {showAssignSuccess && assignSuccessData ? (
+                <div className="p-8 flex flex-col items-center text-center">
+                  <div className="w-16 h-16 rounded-full bg-emerald-500/15 flex items-center justify-center text-emerald-400 light:bg-emerald-50 light:text-emerald-600 mb-6 border border-emerald-500/25 animate-fade-in">
+                    <CheckCircle2 className="w-10 h-10 animate-bounce" />
+                  </div>
+
+                  <h3 className="font-display font-extrabold text-white light:text-neutral-900 text-xl mb-2">
+                    {assignSuccessData.isScheduled ? '¡Clase Programada!' : '¡Clase Subida con Éxito!'}
                   </h3>
+
+                  <p className="text-gray-400 light:text-neutral-600 text-sm max-w-sm mb-6 leading-relaxed">
+                    {assignSuccessData.isScheduled ? (
+                      <span>
+                        La clase de la <strong>Semana {classToAssign.week}</strong> ha sido programada correctamente para los colegios seleccionados.
+                      </span>
+                    ) : (
+                      <span>
+                        La clase de la <strong>Semana {classToAssign.week}</strong> ha sido subida y publicada de inmediato. Ya está disponible para los alumnos.
+                      </span>
+                    )}
+                  </p>
+
+                  <div className="w-full bg-[#14132b]/50 light:bg-neutral-50 border border-white/5 light:border-neutral-200 rounded-2xl p-5 mb-8 text-left space-y-3.5">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-1 font-mono">
+                        Colegios asignados ({assignSuccessData.schools.length})
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {assignSuccessData.schools.map((s) => (
+                          <span key={s} className="px-2.5 py-1 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 light:bg-violet-50 light:text-violet-700 light:border-violet-100 text-xs font-medium">
+                            {s}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-1 font-mono">
+                        Estado y Planificación
+                      </span>
+                      <div className="flex items-center gap-2 text-xs text-white light:text-neutral-800 font-semibold mt-1">
+                        <Clock className="w-4 h-4 text-violet-400 light:text-violet-600 shrink-0" />
+                        <span>
+                          {assignSuccessData.isScheduled ? (
+                            <span className="text-amber-400 light:text-amber-700 font-bold">
+                              Programada para el: {(() => {
+                                const d = new Date(assignSuccessData.unlockAt);
+                                return d.toLocaleDateString('es-AR', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                });
+                              })()}
+                            </span>
+                          ) : (
+                            <span className="text-emerald-400 light:text-emerald-600 font-bold">
+                              Publicada de inmediato (Live)
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setAssignModalOpen(false);
+                      setShowAssignSuccess(false);
+                      setAssignSuccessData(null);
+                    }}
+                    className="liquid-glass-btn w-full py-3.5 px-6 rounded-xl text-sm font-bold shadow-lg shadow-violet-950/20 cursor-pointer text-center"
+                  >
+                    Aceptar y Finalizar
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="p-6 border-b border-white/5 light:border-neutral-200 flex justify-between items-center bg-white/[0.02] light:bg-neutral-50/50">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-violet-400 light:text-violet-600 font-mono">
+                        Planificar Lanzamiento Académico
+                      </span>
+                      <h3 className="text-white light:text-neutral-900 font-sans font-bold text-sm mt-0.5">
+                        Subir Clase: Semana {classToAssign.week} · Nivel {classToAssign.level}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAssignModalOpen(false)}
+                      className="w-8 h-8 rounded-lg bg-white/5 light:bg-neutral-100 text-gray-400 light:text-neutral-600 hover:text-white light:hover:text-neutral-900 flex items-center justify-center text-sm cursor-pointer transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="p-6 space-y-5 max-h-[460px] overflow-y-auto no-scrollbar">
+                    <div>
+                      <div className="flex justify-between items-baseline mb-2">
+                        <label className="text-[10px] font-bold uppercase text-gray-400 light:text-neutral-505 tracking-wider">
+                          Colegios Destinatarios
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (assignSelectedSchools.length === ASSOCIATED_SCHOOLS.length) {
+                              setAssignSelectedSchools([]);
+                            } else {
+                              setAssignSelectedSchools([...ASSOCIATED_SCHOOLS]);
+                            }
+                          }}
+                          className="text-[10px] text-violet-400 light:text-violet-700 font-semibold hover:underline cursor-pointer font-sans"
+                        >
+                          {assignSelectedSchools.length === ASSOCIATED_SCHOOLS.length ? 'Desmarcar todos' : 'Marcar todos'}
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5 border border-white/5 light:border-neutral-200 bg-black/10 light:bg-neutral-50 p-4 rounded-xl">
+                        {ASSOCIATED_SCHOOLS.map(schoolName => {
+                          const isSelected = assignSelectedSchools.includes(schoolName);
+                          return (
+                            <label
+                              key={schoolName}
+                              className="flex items-start gap-2.5 p-1.5 hover:bg-white/[0.02] light:hover:bg-neutral-105 rounded-lg cursor-pointer text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (isSelected) {
+                                    setAssignSelectedSchools(assignSelectedSchools.filter(name => name !== schoolName));
+                                  } else {
+                                    setAssignSelectedSchools([...assignSelectedSchools, schoolName]);
+                                  }
+                                }}
+                                className="mt-0.5 rounded text-violet-500 focus:ring-violet-500 cursor-pointer"
+                              />
+                              <span className="text-white light:text-neutral-800 font-medium leading-tight">
+                                {schoolName}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-400 light:text-neutral-500 tracking-wider block mb-1.5">
+                          Habilitar desde el
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={assignUnlockAt}
+                          onChange={(e) => setAssignUnlockAt(e.target.value)}
+                          className="w-full px-3 py-2 bg-neutral-900 border border-white/10 light:bg-white light:border-neutral-200 rounded-xl text-white light:text-neutral-800 text-xs focus:outline-none focus:border-violet-500 transition-colors"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold uppercase text-gray-400 light:text-neutral-500 tracking-wider block mb-1.5">
+                          Límite de Entrega
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={assignDeadline}
+                          onChange={(e) => setAssignDeadline(e.target.value)}
+                          className="w-full px-3 py-2 bg-neutral-900 border border-white/10 light:bg-white light:border-neutral-200 rounded-xl text-white light:text-neutral-800 text-xs focus:outline-none focus:border-violet-500 transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-white/[0.01] light:bg-[#fbfbfb] border-t border-white/5 light:border-neutral-200 flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setAssignModalOpen(false)}
+                      className="px-4 py-2 bg-white/5 light:bg-neutral-100 text-gray-400 light:text-neutral-700 text-xs font-semibold rounded-lg hover:bg-white/10"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={assignSelectedSchools.length === 0}
+                      onClick={() => {
+                        onAssignClass(classToAssign, assignSelectedSchools, assignUnlockAt, assignDeadline);
+                        const isScheduled = assignUnlockAt ? new Date(assignUnlockAt) > new Date() : false;
+                        setAssignSuccessData({
+                          schools: assignSelectedSchools,
+                          unlockAt: assignUnlockAt,
+                          title: classToAssign.title,
+                          isScheduled,
+                        });
+                        setShowAssignSuccess(true);
+                      }}
+                      className="px-5 py-2 bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-violet-500 text-white text-xs font-semibold rounded-lg shrink-0 cursor-pointer transform active:scale-95 transition-all text-center"
+                    >
+                      Confirmar Subida
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL DE TODAS LAS CLASES SUBIDAS */}
+      <AnimatePresence>
+        {showAllAssignedModal && (
+          <div className="fixed inset-0 bg-black/75 backdrop-blur-[2px] z-50 flex items-center justify-center p-4 overflow-y-auto no-scrollbar">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ duration: 0.2 }}
+              className="bg-[#0f0f20] light:bg-white border border-violet-900/40 light:border-neutral-200 rounded-3xl w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 light:border-neutral-200 flex justify-between items-center bg-white/[0.02] light:bg-neutral-50/50">
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-violet-400 light:text-violet-600" />
+                  <div>
+                    <h3 className="text-white light:text-neutral-900 font-sans font-bold text-base">
+                      Todas las clases subidas
+                    </h3>
+                    <p className="text-gray-400 light:text-neutral-505 text-xs mt-0.5">
+                      Visualizá y eliminá las clases subidas y programadas para cualquier colegio o nivel.
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setAssignModalOpen(false)}
+                  onClick={() => setShowAllAssignedModal(false)}
                   className="w-8 h-8 rounded-lg bg-white/5 light:bg-neutral-100 text-gray-400 light:text-neutral-600 hover:text-white light:hover:text-neutral-900 flex items-center justify-center text-sm cursor-pointer transition-colors"
                 >
                   ✕
                 </button>
               </div>
 
-              <div className="p-6 space-y-5 max-h-[460px] overflow-y-auto no-scrollbar">
-                <div>
-                  <div className="flex justify-between items-baseline mb-2">
-                    <label className="text-[10px] font-bold uppercase text-gray-400 light:text-neutral-505 tracking-wider">
-                      Colegios Destinatarios
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (assignSelectedSchools.length === ASSOCIATED_SCHOOLS.length) {
-                          setAssignSelectedSchools([]);
-                        } else {
-                          setAssignSelectedSchools([...ASSOCIATED_SCHOOLS]);
-                        }
-                      }}
-                      className="text-[10px] text-violet-400 light:text-violet-700 font-semibold hover:underline cursor-pointer font-sans"
-                    >
-                      {assignSelectedSchools.length === ASSOCIATED_SCHOOLS.length ? 'Desmarcar todos' : 'Marcar todos'}
-                    </button>
-                  </div>
-
-                  <div className="space-y-1.5 border border-white/5 light:border-neutral-200 bg-black/10 light:bg-neutral-50 p-4 rounded-xl">
-                    {ASSOCIATED_SCHOOLS.map(schoolName => {
-                      const isSelected = assignSelectedSchools.includes(schoolName);
-                      return (
-                        <label
-                          key={schoolName}
-                          className="flex items-start gap-2.5 p-1.5 hover:bg-white/[0.02] light:hover:bg-neutral-105 rounded-lg cursor-pointer text-xs"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              if (isSelected) {
-                                setAssignSelectedSchools(assignSelectedSchools.filter(name => name !== schoolName));
-                              } else {
-                                setAssignSelectedSchools([...assignSelectedSchools, schoolName]);
-                              }
-                            }}
-                            className="mt-0.5 rounded text-violet-500 focus:ring-violet-500 cursor-pointer"
-                          />
-                          <span className="text-white light:text-neutral-800 font-medium leading-tight">
-                            {schoolName}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
+              {/* Filtros */}
+              <div className="p-4 bg-black/25 light:bg-neutral-50 border-b border-white/5 light:border-neutral-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {/* Buscar por título */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Buscar por título..."
+                    value={assignedSearchTerm}
+                    onChange={(e) => setAssignedSearchTerm(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-200 rounded-xl pl-9 pr-4 py-2 text-white light:text-neutral-800 text-xs focus:outline-none focus:border-violet-500 transition-colors"
+                  />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] font-bold uppercase text-gray-400 light:text-neutral-500 tracking-wider block mb-1.5">
-                      Habilitar desde el
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={assignUnlockAt}
-                      onChange={(e) => setAssignUnlockAt(e.target.value)}
-                      className="w-full px-3 py-2 bg-neutral-900 border border-white/10 light:bg-white light:border-neutral-200 rounded-xl text-white light:text-neutral-800 text-xs focus:outline-none focus:border-violet-500 transition-colors"
-                    />
-                  </div>
+                {/* Filtrar por Colegio */}
+                <div>
+                  <select
+                    value={assignedFilterSchool}
+                    onChange={(e) => setAssignedFilterSchool(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-200 rounded-xl px-3 py-2 text-white light:text-neutral-800 text-xs focus:outline-none focus:border-violet-500 transition-colors"
+                  >
+                    <option value="todos" className="text-neutral-900">Todos los colegios</option>
+                    {Array.from(new Set(classes.map(cl => cl.school).filter(Boolean))).map((schoolName) => (
+                      <option key={schoolName} value={schoolName} className="text-neutral-900">
+                        {schoolName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-                  <div>
-                    <label className="text-[10px] font-bold uppercase text-gray-400 light:text-neutral-500 tracking-wider block mb-1.5">
-                      Límite de Entrega
-                    </label>
-                    <input
-                      type="datetime-local"
-                      value={assignDeadline}
-                      onChange={(e) => setAssignDeadline(e.target.value)}
-                      className="w-full px-3 py-2 bg-neutral-900 border border-white/10 light:bg-white light:border-neutral-200 rounded-xl text-white light:text-neutral-800 text-xs focus:outline-none focus:border-violet-500 transition-colors"
-                    />
-                  </div>
+                {/* Filtrar por Nivel */}
+                <div>
+                  <select
+                    value={assignedFilterLevel}
+                    onChange={(e) => setAssignedFilterLevel(e.target.value)}
+                    className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-200 rounded-xl px-3 py-2 text-white light:text-neutral-800 text-xs focus:outline-none focus:border-violet-500 transition-colors"
+                  >
+                    <option value="todos" className="text-neutral-900">Todos los niveles</option>
+                    {[0, 1, 2, 3, 4].map((lvl) => (
+                      <option key={lvl} value={lvl.toString()} className="text-neutral-900">
+                        Nivel {lvl}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
-              <div className="p-4 bg-white/[0.01] light:bg-[#fbfbfb] border-t border-white/5 light:border-neutral-200 flex justify-end gap-2">
+              {/* Lista de Clases Subidas */}
+              <div className="flex-1 overflow-y-auto p-6 space-y-3 no-scrollbar max-h-[50vh]">
+                {(() => {
+                  const filteredAssigned = classes
+                    .filter(cl => !cl.isSyllabus && cl.school)
+                    .filter(cl => {
+                      // Búsqueda por título
+                      if (assignedSearchTerm.trim() !== '') {
+                        return cl.title.toLowerCase().includes(assignedSearchTerm.toLowerCase());
+                      }
+                      return true;
+                    })
+                    .filter(cl => {
+                      // Filtro por colegio
+                      if (assignedFilterSchool !== 'todos') {
+                        return cl.school === assignedFilterSchool;
+                      }
+                      return true;
+                    })
+                    .filter(cl => {
+                      // Filtro por nivel
+                      if (assignedFilterLevel !== 'todos') {
+                        return cl.level === Number(assignedFilterLevel);
+                      }
+                      return true;
+                    })
+                    .sort((a, b) => {
+                      // Ordenar por colegio, luego por nivel y semana
+                      if (a.school !== b.school) return (a.school || '').localeCompare(b.school || '');
+                      if (a.level !== b.level) return a.level - b.level;
+                      return a.week - b.week;
+                    });
+
+                  if (filteredAssigned.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-gray-500">
+                        <BookOpen className="w-12 h-12 mx-auto text-gray-600 mb-3 opacity-50" />
+                        <p className="text-sm font-semibold">No se encontraron clases subidas</p>
+                        <p className="text-xs mt-1">Intentá cambiar los criterios de búsqueda o filtros.</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-2.5">
+                      {filteredAssigned.map((cl, idx) => {
+                        const isScheduled = cl.unlockAt ? new Date(cl.unlockAt) > new Date() : false;
+                        return (
+                          <div
+                            key={cl.id || idx}
+                            className="bg-[#0c0c1c]/40 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-violet-500/30 transition-all shadow-sm"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="px-2 py-0.5 rounded-lg bg-violet-500/10 border border-violet-500/20 text-violet-300 light:bg-violet-50 light:text-violet-700 light:border-violet-100 text-[10px] font-bold font-mono">
+                                  {cl.school}
+                                </span>
+                                <span className="text-[10px] text-gray-400 font-mono font-bold uppercase">
+                                  Nivel {cl.level} · Sem {cl.week}
+                                </span>
+                                {isScheduled ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-amber-500/15 border border-amber-500/20 text-amber-400 text-[9px] font-bold uppercase flex items-center gap-1">
+                                    <Clock className="w-2.5 h-2.5 shrink-0 animate-pulse" />
+                                    Programada
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 border border-emerald-500/20 text-emerald-400 text-[9px] font-bold uppercase">
+                                    Publicada
+                                  </span>
+                                )}
+                              </div>
+                              <h4 className="text-white light:text-neutral-800 font-sans font-bold text-sm">
+                                {cl.title}
+                              </h4>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+                                {cl.unlockAt && (
+                                  <span className="flex items-center gap-1">
+                                    <span className="font-semibold text-gray-400">Desde:</span>
+                                    {new Date(cl.unlockAt).toLocaleDateString('es-AR', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                )}
+                                {cl.deadline && (
+                                  <span className="flex items-center gap-1">
+                                    <span className="font-semibold text-gray-400">Límite:</span>
+                                    {new Date(cl.deadline).toLocaleDateString('es-AR', {
+                                      day: '2-digit',
+                                      month: 'short',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setDeleteConfirmation({
+                                  level: cl.level,
+                                  week: cl.week,
+                                  id: cl.id,
+                                  title: cl.title,
+                                  school: cl.school,
+                                  isSyllabus: false
+                                });
+                              }}
+                              className="px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-white transition-all cursor-pointer text-xs font-bold flex items-center justify-center gap-1.5 self-end sm:self-auto"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Eliminar</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Footer */}
+              <div className="bg-white/2 light:bg-neutral-50 border-t border-white/5 light:border-neutral-200 p-4 flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setAssignModalOpen(false)}
-                  className="px-4 py-2 bg-white/5 light:bg-neutral-100 text-gray-400 light:text-neutral-700 text-xs font-semibold rounded-lg hover:bg-white/10"
+                  onClick={() => setShowAllAssignedModal(false)}
+                  className="px-5 py-2 bg-white/5 light:bg-neutral-100 hover:bg-white/10 text-gray-300 light:text-neutral-700 font-semibold rounded-xl text-xs cursor-pointer transition-colors"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  disabled={assignSelectedSchools.length === 0}
-                  onClick={() => {
-                    onAssignClass(classToAssign, assignSelectedSchools, assignUnlockAt, assignDeadline);
-                    setAssignModalOpen(false);
-                  }}
-                  className="px-5 py-2 bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-violet-500 text-white text-xs font-semibold rounded-lg shrink-0 cursor-pointer transform active:scale-95 transition-all text-center"
-                >
-                  Confirmar Subida
+                  Cerrar
                 </button>
               </div>
             </motion.div>
