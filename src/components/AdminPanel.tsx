@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, BookOpen, Trash2, Users, AlertTriangle, School, ChevronRight, ArrowLeft, CheckCircle2, Clock, FileText, Loader2,
-  Mail, ExternalLink, Sparkles, Search, Bell, Calendar, ChevronDown, Check, UserPlus, TrendingUp
+  Mail, ExternalLink, Sparkles, Search, Bell, Calendar, ChevronDown, Check, UserPlus, TrendingUp, Edit, Pencil
 } from 'lucide-react';
 import { ClassItem, Student, ActivitySubmission } from '../types';
 import ClassModal from './ClassModal';
@@ -53,6 +53,7 @@ export default function AdminPanel({
 
   // Syllabus & Upload Class State
   const [selectedSyllabusLevel, setSelectedSyllabusLevel] = useState<number>(0);
+  const [expandedSyllabusWeeks, setExpandedSyllabusWeeks] = useState<Record<string, boolean>>({});
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [classToAssign, setClassToAssign] = useState<ClassItem | null>(null);
   const [assignSelectedSchools, setAssignSelectedSchools] = useState<string[]>([]);
@@ -1235,7 +1236,7 @@ export default function AdminPanel({
                           <th className="px-4 py-3">Avance Académico</th>
                           <th className="px-4 py-3">Desafíos Pendientes</th>
                           <th className="px-4 py-3">Estado</th>
-                          <th className="px-4 py-3 text-right">Alerta</th>
+                          <th className="px-4 py-3 text-right">Acciones</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1384,26 +1385,65 @@ export default function AdminPanel({
                                   </span>
                                 </td>
 
-                                {/* Alerta Interactiva Bell */}
+                                {/* Alerta Interactiva Bell y Edición de Clases */}
                                 <td className="px-4 py-3.5 text-right">
-                                  <button
-                                    onClick={() => {
-                                      setBellNotification({
-                                        studentName: student.name,
-                                        email: studentEmail
-                                      });
-                                      // Scroll to top to see notification popup immediately
-                                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                                    }}
-                                    className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
-                                      computedStatus === 'warn'
-                                        ? 'bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500 hover:text-black hover:scale-105 active:scale-95 shadow'
-                                        : 'bg-white/5 border-white/5 text-gray-600 hover:bg-white/10 hover:text-white'
-                                    }`}
-                                    title={computedStatus === 'warn' ? `Enviar recordatorio urgente de entregas a ${student.name}` : `Enviar felicitación por desempeño positivo a ${student.name}`}
-                                  >
-                                    <Bell className="w-3.5 h-3.5" />
-                                  </button>
+                                  <div className="flex justify-end items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleEditStudentClick({
+                                          name: student.name,
+                                          initials: student.initials || student.name.slice(0, 2).toUpperCase(),
+                                          level: student.level ?? 0,
+                                          progress: student.progress ?? 0,
+                                          total: student.total ?? 16,
+                                          status: student.status ?? 'ok',
+                                          email: studentEmail,
+                                          school: student.school || ASSOCIATED_SCHOOLS[0],
+                                          registered: student.registered ?? true
+                                        });
+                                      }}
+                                      className="p-1.5 px-2 rounded-lg bg-violet-600/10 border border-violet-500/20 text-violet-400 hover:bg-violet-600 hover:text-white transition-all cursor-pointer text-[10px] font-bold flex items-center gap-1"
+                                      title="Cambiar o asignar clases"
+                                    >
+                                      <Edit className="w-3 h-3" />
+                                      <span>Clases / Nivel</span>
+                                    </button>
+
+                                    <button
+                                      onClick={() => {
+                                        setBellNotification({
+                                          studentName: student.name,
+                                          email: studentEmail
+                                        });
+                                        // Scroll to top to see notification popup immediately
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                                      }}
+                                      className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                        computedStatus === 'warn'
+                                          ? 'bg-amber-500/10 border-amber-500/20 text-amber-500 hover:bg-amber-500 hover:text-black hover:scale-105 active:scale-95 shadow'
+                                          : 'bg-white/5 border-white/5 text-gray-600 hover:bg-white/10 hover:text-white'
+                                      }`}
+                                      title={computedStatus === 'warn' ? `Enviar recordatorio urgente de entregas a ${student.name}` : `Enviar felicitación por desempeño positivo a ${student.name}`}
+                                    >
+                                      <Bell className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    {onDeleteStudent && (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          if (confirm(`¿Dar de baja académica y eliminar a ${student.name} del campus?`)) {
+                                            onDeleteStudent(studentEmail);
+                                          }
+                                        }}
+                                        className="p-1.5 rounded-lg bg-red-600/10 border border-red-500/20 text-red-400 hover:bg-red-600 hover:text-white transition-all cursor-pointer"
+                                        title={`Dar de baja académica a ${student.name}`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1481,93 +1521,134 @@ export default function AdminPanel({
               })}
             </div>
 
-            {/* Grid display of syllabus classes */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Accordion grid display of syllabus classes */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
               {classes.filter(cl => cl.isSyllabus && cl.level === selectedSyllabusLevel).length > 0 ? (
                 classes
                   .filter(cl => cl.isSyllabus && cl.level === selectedSyllabusLevel)
                   .sort((a, b) => a.week - b.week)
-                  .map((cl, idx) => (
-                    <div
-                      key={idx}
-                      className="bg-[#0c0c1c]/30 light:bg-white border border-white/5 light:border-neutral-200 rounded-xl p-5 flex flex-col justify-between shadow-sm hover:border-violet-500/30 transition-colors"
-                    >
-                      <div>
-                        <div className="flex justify-between items-baseline">
-                          <span className="text-[10px] font-mono tracking-wider font-bold text-violet-400 light:text-violet-600 uppercase">
-                            Semana {cl.week}
-                          </span>
-                          <span className="px-2 py-0.5 rounded bg-white/5 light:bg-neutral-50 border border-white/5 light:border-neutral-200 text-[9px] font-mono text-gray-500">
-                            {getResourcesString(cl)}
-                          </span>
-                        </div>
-                        <h3 className="font-sans font-semibold text-white light:text-neutral-800 text-sm mt-1.5 line-clamp-1">
-                          {cl.title}
-                        </h3>
-                        {cl.text && (
-                          <div 
-                            className="text-gray-400 light:text-neutral-600 text-xs mt-2 line-clamp-2 leading-relaxed" 
-                            dangerouslySetInnerHTML={{ __html: cl.text }} 
-                          />
-                        )}
-                        
-                        <div className="mt-4 bg-[#0a0a1a]/40 light:bg-neutral-50/50 p-3 rounded-lg border border-white/[0.02] light:border-neutral-200">
-                          <div className="text-[9px] uppercase tracking-wider text-gray-500 font-mono font-bold">Actividad Desafío</div>
-                          <h4 className="text-white light:text-neutral-800 font-medium text-xs mt-1 truncate">{cl.actTitle || 'Sin título'}</h4>
-                          <p className="text-[11px] text-gray-400 light:text-neutral-600 mt-1 line-clamp-1 italic">{cl.actDesc || 'Sin descripción'}</p>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 pt-4 border-t border-white/5 light:border-neutral-200 flex items-center justify-between gap-2">
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleEditClick(cl)}
-                            className="px-3.5 py-1.5 text-xs font-semibold rounded-lg border border-violet-500/20 text-violet-400 hover:bg-violet-500/10 hover:text-white light:bg-violet-50 light:border-violet-200/50 light:text-violet-600 light:hover:bg-violet-100/80 light:hover:text-violet-700 transition-all cursor-pointer font-sans"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteConfirmation({
-                                level: cl.level,
-                                week: cl.week,
-                                id: cl.id,
-                                title: cl.title,
-                                isSyllabus: true
-                              });
-                            }}
-                            className="p-2 text-neutral-500 hover:text-red-400 transition-colors cursor-pointer"
-                            title="Eliminar del Syllabus"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-
-                        {/* SUBIR CLASE VIBRANT TRIGGER */}
+                  .map((cl, idx) => {
+                    const key = cl.id || `week_${cl.level}_${cl.week}`;
+                    const isExpanded = !!expandedSyllabusWeeks[key];
+                    return (
+                      <div
+                        key={cl.id || idx}
+                        className="bg-[#0c0c1c]/30 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl overflow-hidden shadow-sm hover:border-violet-500/25 transition-all"
+                      >
+                        {/* Accordion Header Button */}
                         <button
                           type="button"
                           onClick={() => {
-                            setClassToAssign(cl);
-                            setAssignSelectedSchools([]);
-                            setAssignUnlockAt(new Date().toISOString().substring(0, 16));
-                            setAssignDeadline(new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
-                            setAssignModalOpen(true);
-                            setShowAssignSuccess(false);
-                            setAssignSuccessData(null);
+                            setExpandedSyllabusWeeks(prev => ({
+                              ...prev,
+                              [key]: !prev[key]
+                            }));
                           }}
-                          className="liquid-glass-btn inline-flex items-center gap-1.5 px-4.5 py-2 text-xs font-bold select-none cursor-pointer"
+                          className="w-full flex items-center justify-between p-4.5 text-left transition-colors hover:bg-white/[0.02] light:hover:bg-neutral-50/50 cursor-pointer"
                         >
-                          <Clock className="w-3.5 h-3.5 shrink-0" />
-                          <span>Subir Clase</span>
+                          <div className="flex items-center gap-4.5 min-w-0">
+                            {/* Week pill */}
+                            <div className="px-3 py-1.5 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-300 light:bg-violet-50 light:text-violet-700 light:border-violet-100 text-xs font-extrabold font-mono shrink-0">
+                              Semana {cl.week}
+                            </div>
+                            
+                            {/* Class Title */}
+                            <div className="min-w-0">
+                              <h3 className="font-sans font-bold text-white light:text-neutral-800 text-sm md:text-base leading-tight truncate">
+                                {cl.title}
+                              </h3>
+                            </div>
+                          </div>
+
+                          {/* Right side: Resource Badge & Chevron */}
+                          <div className="flex items-center gap-3 shrink-0 ml-4">
+                            <span className="hidden sm:inline-block px-2.5 py-1 rounded-lg bg-white/5 light:bg-neutral-100 border border-white/5 light:border-neutral-200/60 text-[10px] font-mono font-bold text-gray-400 light:text-neutral-500">
+                              {getResourcesString(cl)}
+                            </span>
+                            <div className={`p-1.5 rounded-lg bg-white/5 light:bg-neutral-100 text-gray-400 light:text-neutral-500 transition-all duration-200 ${isExpanded ? 'rotate-180 text-violet-400 light:text-violet-600 bg-violet-500/10 border-violet-500/15' : ''}`}>
+                              <ChevronDown className="w-4 h-4" />
+                            </div>
+                          </div>
                         </button>
+
+                        {/* Accordion Content */}
+                        <AnimatePresence initial={false}>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden border-t border-white/5 light:border-neutral-150"
+                            >
+                              <div className="p-5 space-y-4 bg-black/[0.12] light:bg-neutral-50/20">
+                                {/* Challenge Activity Box */}
+                                <div className="bg-[#0a0a1a]/60 light:bg-neutral-50 p-4 rounded-2xl border border-white/[0.04] light:border-neutral-200 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                  <div className="space-y-1">
+                                    <div className="text-[9px] uppercase tracking-wider text-violet-400 light:text-violet-600 font-mono font-bold">Actividad Desafío</div>
+                                    <h4 className="text-white light:text-neutral-800 font-bold text-sm">{cl.actTitle || 'Sin título'}</h4>
+                                    <p className="text-xs text-gray-400 light:text-neutral-505 leading-relaxed max-w-2xl">{cl.actDesc || 'Sin descripción'}</p>
+                                  </div>
+                                  <span className="px-3 py-1.5 self-start md:self-auto rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-300 light:bg-violet-50 light:text-violet-700 light:border-violet-100 text-[10px] font-mono font-bold">
+                                    Contenido en Video / Slides
+                                  </span>
+                                </div>
+
+                                {/* Actions footer */}
+                                <div className="pt-4 border-t border-white/5 light:border-neutral-200/80 flex items-center justify-between gap-4">
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleEditClick(cl)}
+                                      className="px-4 py-2 text-xs font-bold rounded-xl border border-violet-500/20 text-violet-400 hover:bg-violet-500/10 hover:text-white light:bg-violet-50 light:border-violet-200/50 light:text-violet-600 light:hover:bg-violet-100/80 light:hover:text-violet-700 transition-all cursor-pointer flex items-center gap-1.5"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                      <span>Editar plantilla</span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setDeleteConfirmation({
+                                          level: cl.level,
+                                          week: cl.week,
+                                          id: cl.id,
+                                          title: cl.title,
+                                          isSyllabus: true
+                                        });
+                                      }}
+                                      className="p-2 rounded-xl text-neutral-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                                      title="Eliminar del Syllabus"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setClassToAssign(cl);
+                                      setAssignSelectedSchools([]);
+                                      setAssignUnlockAt(new Date().toISOString().substring(0, 16));
+                                      setAssignDeadline(new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
+                                      setAssignModalOpen(true);
+                                      setShowAssignSuccess(false);
+                                      setAssignSuccessData(null);
+                                    }}
+                                    className="liquid-glass-btn inline-flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold select-none cursor-pointer"
+                                  >
+                                    <Clock className="w-3.5 h-3.5 shrink-0" />
+                                    <span>Subir Clase a Colegios</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
               ) : (
-                <div className="col-span-1 md:col-span-2 text-center py-12 bg-neutral-900/10 border border-dashed border-white/5 light:border-neutral-200 rounded-2xl">
+                <div className="text-center py-12 bg-neutral-900/10 border border-dashed border-white/5 light:border-neutral-200 rounded-2xl">
                   <BookOpen className="w-10 h-10 text-gray-600 light:text-gray-400 mx-auto mb-2" />
                   <p className="text-gray-400 light:text-gray-500 text-sm">
                     No hay clases cargadas en el Syllabus del Nivel {selectedSyllabusLevel} todavía.
@@ -1687,20 +1768,45 @@ export default function AdminPanel({
                             {u.school || '—'}
                           </td>
                           <td className="px-4 py-3.5 text-right">
-                            {onDeleteUser && (
-                              <button
-                                onClick={() => {
-                                  if (confirm(`¿Estás seguro de que deseas dar de baja y revocar el acceso a ${u.name}?`)) {
-                                    onDeleteUser(u.email);
-                                  }
-                                }}
-                                className="p-1 px-2 text-red-100 bg-red-600 hover:bg-red-550 rounded cursor-pointer transition-colors text-[10px]"
-                                title="Eliminar usuario"
-                              >
-                                <Trash2 className="w-3 h-3 inline mr-1" />
-                                <span>Dar de Baja</span>
-                              </button>
-                            )}
+                            <div className="flex justify-end items-center gap-1.5">
+                              {u.role === 'alumno' && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleEditStudentClick({
+                                      name: u.name,
+                                      initials: u.initials || u.name.slice(0, 2).toUpperCase(),
+                                      level: u.level ?? 0,
+                                      progress: 0,
+                                      total: 16,
+                                      status: 'ok',
+                                      email: u.email,
+                                      school: u.school || ASSOCIATED_SCHOOLS[0],
+                                      registered: true
+                                    });
+                                  }}
+                                  className="p-1 px-2.5 rounded text-violet-300 light:text-violet-700 bg-violet-600/10 border border-violet-500/25 hover:bg-violet-600 hover:text-white transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1"
+                                  title="Cambiar o asignar clases"
+                                >
+                                  <Pencil className="w-3 h-3" />
+                                  <span>Clases / Nivel</span>
+                                </button>
+                              )}
+                              {onDeleteUser && (
+                                <button
+                                  onClick={() => {
+                                    if (confirm(`¿Estás seguro de que deseas dar de baja y revocar el acceso a ${u.name}?`)) {
+                                      onDeleteUser(u.email);
+                                    }
+                                  }}
+                                  className="p-1 px-2 text-red-100 bg-red-600 hover:bg-red-550 rounded cursor-pointer transition-colors text-[10px] flex items-center gap-1"
+                                  title="Eliminar usuario"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  <span>Dar de Baja</span>
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))}

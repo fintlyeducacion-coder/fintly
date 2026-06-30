@@ -512,8 +512,12 @@ export default function App() {
           const cleanEmail = u.email?.toLowerCase().trim();
           if (!cleanEmail) continue;
 
-          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
+          const userName = (u.name || '').toLowerCase().trim();
+          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail) || userName === 'asd') {
             await deleteDoc(doc(db, 'users', cleanEmail)).catch(() => {});
+            const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
+            await deleteDoc(doc(db, 'students', studentDocId)).catch(() => {});
+            console.log(`[Heal] Deleted user named asd/demo: ${cleanEmail}`);
             continue;
           }
 
@@ -537,8 +541,10 @@ export default function App() {
           const cleanEmail = st.email?.toLowerCase().trim();
           if (!cleanEmail) continue;
 
-          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
+          const studentName = (st.name || '').toLowerCase().trim();
+          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail) || studentName === 'asd') {
             await deleteDoc(doc(db, 'students', studentDoc.id)).catch(() => {});
+            console.log(`[Heal] Deleted student record named asd/demo: ${cleanEmail}`);
             continue;
           }
 
@@ -975,6 +981,14 @@ export default function App() {
           createdAt: new Date().toISOString()
         });
         console.log(`Successfully queued invitation email document in Firestore 'mail' collection for: ${cleanEmail}`);
+      } else {
+        // Actualizar el perfil de usuario existente (colegio, nivel y nombre)
+        await setDoc(userProfileRef, {
+          name: student.name,
+          level: student.level,
+          school: student.school
+        }, { merge: true });
+        console.log(`Successfully updated existing user profile for: ${cleanEmail}`);
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'students');
