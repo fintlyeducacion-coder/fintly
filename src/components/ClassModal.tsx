@@ -5,11 +5,13 @@ import {
   Eye, ArrowLeft, Video, Presentation, FilePenLine, Clock, CalendarDays, CheckCircle2
 } from 'lucide-react';
 import { ClassItem } from '../types';
+import { sanitizeHtml } from '../sanitize';
+import { ASSOCIATED_SCHOOLS } from '../data';
 
 interface ClassModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (classItem: ClassItem, keepOpen?: boolean) => void;
+  onSave: (classItem: ClassItem, keepOpen?: boolean) => void | Promise<void>;
   initialClass: ClassItem | null;
   associatedSchools?: string[];
   onAssignClass?: (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => void | Promise<void>;
@@ -188,12 +190,7 @@ export default function ClassModal({
     setConfirmationData(null);
 
     // Initialize publish fields
-    const schoolsList = associatedSchools || [
-      'Colegio IDES',
-      'Colegio San Martín',
-      'Colegio Belgrano',
-      'Colegio Sarmiento'
-    ];
+    const schoolsList = associatedSchools || ASSOCIATED_SCHOOLS;
     setPublishSchools(schoolsList);
     setPublishUnlockAt(initialClass?.unlockAt || new Date().toISOString().substring(0, 16));
     setPublishDeadline(initialClass?.deadline || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
@@ -291,6 +288,10 @@ export default function ClassModal({
 
     return {
       level,
+      // Conservamos el módulo y la marca de syllabus del original:
+      // sin esto la clase se guarda huérfana y no aparece en su módulo
+      module: initialClass?.module,
+      isSyllabus: initialClass?.isSyllabus,
       week: Number(week),
       title: title.trim(),
       unlockAt,
@@ -334,12 +335,13 @@ export default function ClassModal({
       return;
     }
 
-    const extractedId = extractYoutubeId(videoId.trim());
-    const classItem = buildClassItem(extractedId);
-
     try {
-      // 1. Guardar la clase en el Syllabus (usando keepOpen = true para evitar el cierre inmediato)
-      onSave(classItem, true);
+      // Dentro del try: si alguna de estas dos falla, antes moría en silencio
+      const extractedId = extractYoutubeId(videoId.trim());
+      const classItem = buildClassItem(extractedId);
+
+      // 1. Guardar la clase en el Syllabus (keepOpen = true para no cerrar el modal)
+      await onSave(classItem, true);
 
       // 2. Asignar/subir la clase a los colegios seleccionados
       if (onAssignClass) {
@@ -357,9 +359,21 @@ export default function ClassModal({
         isScheduled,
       });
       setShowConfirmation(true);
-    } catch (error) {
-      console.error("Error al subir la clase directamente:", error);
-      alert("Hubo un error al subir la clase. Por favor vuelve a intentarlo.");
+    } catch (error: any) {
+      console.error('Error al subir la clase directamente:', error);
+      if (error?.code === 'permission-denied') {
+        alert(
+          `Firestore rechazo la escritura por permisos.
+
+Causa habitual: estas entrando con el bypass de desarrollo, que no crea sesion de Firebase Auth. Las reglas de seguridad exigen una sesion real de admin.
+
+Solucion: poner DEV_BYPASS_USER en null e iniciar sesion con Google.`
+        );
+      } else {
+        alert(`No se pudo subir la clase.
+
+${error?.message || 'Error desconocido'}`);
+      }
     }
   };
 
@@ -456,12 +470,7 @@ export default function ClassModal({
 
   // 2. DIRECT PUBLISHING CONFIGURATION VIEW
   if (isPublishingNow) {
-    const schoolsList = associatedSchools || [
-      'Colegio IDES',
-      'Colegio San Martín',
-      'Colegio Belgrano',
-      'Colegio Sarmiento'
-    ];
+    const schoolsList = associatedSchools || ASSOCIATED_SCHOOLS;
     return (
       <div className="fixed inset-0 z-110 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm overflow-y-auto no-scrollbar">
         <motion.div
@@ -558,7 +567,7 @@ export default function ClassModal({
                   type="datetime-local"
                   value={publishUnlockAt}
                   onChange={(e) => setPublishUnlockAt(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+                  className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
                 />
                 <span className="text-[10px] text-gray-500 block">
                   Si dejas la fecha actual, los alumnos podrán verla inmediatamente. Si ingresas una fecha futura, quedará programada.
@@ -573,7 +582,7 @@ export default function ClassModal({
                   type="datetime-local"
                   value={publishDeadline}
                   onChange={(e) => setPublishDeadline(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+                  className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
                 />
               </div>
             </div>
@@ -612,17 +621,25 @@ export default function ClassModal({
         className="bg-[#0f0f22] light:bg-white border border-violet-900/40 light:border-neutral-200 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl"
       >
         {/* Header modal */}
-        <div className="flex items-center justify-between border-b border-gray-800 light:border-neutral-200 p-6 bg-white/[0.02] light:bg-neutral-50/50">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-violet-400 light:text-violet-600" />
-            <h3 className="font-display font-extrabold text-white light:text-neutral-900 text-lg">
-              {initialClass ? 'Editar clase cargada' : 'Crear nueva clase'}
-            </h3>
+        <div className="relative flex items-center justify-between border-b border-white/5 light:border-neutral-200 px-6 py-5 overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-violet-600/8 via-transparent to-transparent pointer-events-none" />
+          <div className="flex items-center gap-3 relative">
+            <div className="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/20 flex items-center justify-center">
+              <Layers className="w-4 h-4 text-violet-400 light:text-violet-600" />
+            </div>
+            <div>
+              <h3 className="font-display font-bold text-white light:text-neutral-900 text-base leading-tight">
+                {initialClass ? 'Editar clase' : 'Nueva clase'}
+              </h3>
+              <span className="text-[10px] text-gray-500 font-mono">
+                {initialClass ? `Semana ${initialClass.week} · Nivel ${initialClass.level}` : 'Campus Fintly · Syllabus'}
+              </span>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white/5 light:bg-neutral-100 hover:bg-white/10 light:hover:bg-neutral-200 text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800 flex items-center justify-center transition-colors cursor-pointer"
+            className="relative w-8 h-8 rounded-lg bg-white/5 light:bg-neutral-100 hover:bg-white/10 light:hover:bg-neutral-200 text-gray-400 light:text-neutral-500 hover:text-white light:hover:text-neutral-800 flex items-center justify-center transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -672,7 +689,7 @@ export default function ClassModal({
               <select
                 value={level}
                 onChange={(e) => setLevel(Number(e.target.value))}
-                className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+                className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
               >
                 <option value="0" className="bg-[#12122a] text-white light:bg-white light:text-neutral-800">Nivel 0 — Fundamentos</option>
                 <option value="1" className="bg-[#12122a] text-white light:bg-white light:text-neutral-800">Nivel 1 — Hábitos financieros</option>
@@ -692,7 +709,7 @@ export default function ClassModal({
                 value={week}
                 onChange={(e) => setWeek(Number(e.target.value))}
                 placeholder="ej: 1"
-                className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+                className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
               />
             </div>
           </div>
@@ -721,7 +738,7 @@ export default function ClassModal({
               type="datetime-local"
               value={unlockAt}
               onChange={(e) => setUnlockAt(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+              className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
             />
             <span className="text-[10px] text-gray-500 light:text-neutral-500 block">
               Los alumnos visualizarán la clase bajo llave de candado ("próximamente") hasta cumplirse este plazo.
@@ -802,7 +819,7 @@ export default function ClassModal({
                   }}
                   className="px-2 py-1 bg-violet-600/15 hover:bg-violet-600/35 text-violet-300 light:bg-violet-50 light:text-violet-700 rounded-xl text-[10px] font-bold transition-colors border border-violet-500/20 cursor-pointer"
                 >
-                  ✨ Ejemplo
+                  Ejemplo
                 </button>
               </div>
             </div>
@@ -894,7 +911,7 @@ export default function ClassModal({
               type="datetime-local"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
-              className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500"
+              className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
             />
           </div>
         </form>
@@ -1025,7 +1042,7 @@ export default function ClassModal({
                     <div 
                       className="class-body-html"
                       dangerouslySetInnerHTML={{ 
-                        __html: (() => {
+                        __html: sanitizeHtml((() => {
                           let htmlText = text.trim();
                           if (htmlText) {
                             htmlText = htmlText.replace(/### (.*?)\n/g, '<h3>$1</h3>');
@@ -1040,7 +1057,7 @@ export default function ClassModal({
                               .join('');
                           }
                           return htmlText || `<p>${text || 'No hay texto redactado todavía.'}</p>`;
-                        })()
+                        })())
                       }}
                     />
                   </motion.div>

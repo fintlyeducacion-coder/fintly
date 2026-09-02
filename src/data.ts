@@ -1,84 +1,136 @@
-import { Course, User, Student, ClassItem } from './types';
+import { ClassItem } from './types';
 
-export const COURSES: Course[] = [
+/**
+ * Colegios con convenio vigente. Es la ÚNICA fuente de verdad.
+ * El nombre funciona como clave: las clases publicadas se vinculan por este string,
+ * así que cambiar uno acá desvincula lo ya publicado a ese colegio en Firestore.
+ */
+export const ASSOCIATED_SCHOOLS = [
+  'Faro Benavides',
+  'Faro Escobar',
+  'Northfield Puertos',
+  'Northfield Nordelta',
+  'SouthGreek',
+  'Global School',
+];
+
+/** Colegio de un usuario todavía sin asignar. No es un colegio real. */
+export const SIN_ASIGNAR = 'Sin asignar';
+
+/** Pseudo-colegio del equipo Fintly (los admin no pertenecen a una institución). */
+export const COLEGIO_INTERNO = 'Fintly Campus Virtual';
+
+export const COURSES = [
   {
     id: 0,
-    name: "Fundamentos",
-    desc: "¿Qué es el dinero? Ingresos, egresos y tu primer presupuesto.",
-    accent: "from-violet-500 to-purple-600",
-    total: 16
+    name: 'Fundamentos Financieros',
+    desc: 'Bases del dinero, presupuesto y ahorro consciente.',
+    accent: 'from-violet-600 to-indigo-600',
   },
   {
     id: 1,
-    name: "Hábitos financieros",
-    desc: "Ahorro sistemático, fondo de emergencia e interés compuesto.",
-    accent: "from-indigo-500 to-indigo-600",
-    total: 16
+    name: 'Hábitos y Presupuesto',
+    desc: 'La regla 50/30/20, control de gastos e inflación.',
+    accent: 'from-indigo-600 to-blue-600',
   },
   {
     id: 2,
-    name: "Inversión básica",
-    desc: "Inflación, activos e instrumentos de inversión.",
-    accent: "from-blue-600 to-blue-500",
-    total: 16
+    name: 'Inversión Básica',
+    desc: 'Interés compuesto, riesgo, plazo fijo y bonos.',
+    accent: 'from-emerald-600 to-teal-600',
   },
   {
     id: 3,
-    name: "Estrategia avanzada",
-    desc: "Portafolios, negocios y planificación a largo plazo.",
-    accent: "from-sky-500 to-cyan-500",
-    total: 16
-  }
+    name: 'Estrategia Avanzada',
+    desc: 'Acciones, diversificación y toma de decisiones.',
+    accent: 'from-amber-500 to-orange-600',
+  },
 ];
 
-export const DEMO_USERS: Record<string, User> = {
-  'admin@fintly.pro': { name: 'Francisco Argenti', role: 'admin', initials: 'FA', email: 'admin@fintly.pro', password: '123456' },
-  'profe@fintly.pro': { name: 'Prof. García', role: 'directivo', initials: 'PG', email: 'profe@fintly.pro', password: '123456' },
-  'director@fintly.pro': { name: 'Director Sánchez', role: 'directivo', initials: 'DS', email: 'director@fintly.pro', password: '123456' },
-  'alumno@fintly.pro': { name: 'Martina López', role: 'alumno', initials: 'ML', email: 'alumno@fintly.pro', password: '123456' },
-  'fargenti01@gmail.com': { name: 'Francisco Argenti (Admin)', role: 'admin', initials: 'FA', email: 'fargenti01@gmail.com', password: '123456' },
-  'juanurrizass@gmail.com': { name: 'Juan Urrizas (Admin)', role: 'admin', initials: 'JU', email: 'juanurrizass@gmail.com', password: '123456' },
-  'ianlucasfreitag@gmail.com': { name: 'Ian Lucas Freitag (Admin)', role: 'admin', initials: 'IF', email: 'ianlucasfreitag@gmail.com', password: '123456' },
-  'fintlyeducacion@gmail.com': { name: 'Fintly Educación (Admin)', role: 'admin', initials: 'FE', email: 'fintlyeducacion@gmail.com', password: '123456' }
-};
-
-export const DEMO_STUDENTS: Student[] = [];
+export const UPCOMING_COURSES = [
+  {
+    id: 'prog1',
+    name: 'Programación I',
+    tagline: 'Lógica computacional, algoritmos y Python para finanzas.',
+    accent: 'from-blue-600 to-cyan-500',
+    minAge: 12,
+    modules: ['Variables y Flujo', 'Funciones', 'Estructuras', 'Mini Proyecto'],
+  },
+  {
+    id: 'prog2',
+    name: 'Programación II',
+    tagline: 'Desarrollo web interactivo y simuladores en JavaScript.',
+    accent: 'from-indigo-600 to-violet-600',
+    minAge: 13,
+    modules: ['DOM y Eventos', 'APIs Financieras', 'Canvas', 'App Final'],
+  },
+  {
+    id: 'ia',
+    name: 'Inteligencia Artificial',
+    tagline: 'Modelos de lenguaje, prompts y automatización inteligente.',
+    accent: 'from-violet-600 to-fuchsia-600',
+    minAge: 13,
+    modules: ['Fundamentos IA', 'Prompt Engineering', 'Automatizaciones', 'Ética y Futuro'],
+  },
+  {
+    id: 'inversiones',
+    name: 'Inversiones y Mercados',
+    tagline: 'Análisis fundamental, ETFs y mercado de capitales.',
+    accent: 'from-emerald-600 to-teal-500',
+    minAge: 14,
+    modules: ['Renta Fija', 'Renta Variable', 'Fondos Comunes', 'Portafolios'],
+  },
+  {
+    id: 'vida-pro',
+    name: 'Habilidades Profesionales',
+    tagline: 'Liderazgo, oratoria, negociación y CV digital.',
+    accent: 'from-amber-500 to-rose-500',
+    minAge: 14,
+    modules: ['Comunicación', 'Negociación', 'Gestión de Tiempo', 'Pitch y Emprendimiento'],
+  },
+];
 
 export const DEFAULT_CLASSES: ClassItem[] = [
   {
     level: 0,
+    module: 1,
     week: 1,
-    title: "¿Qué es el dinero?",
-    unlockAt: "2026-01-01T00:00",
-    deadline: "2099-01-01T00:00",
-    text: `<h3>Introducción al dinero</h3><p>El dinero es mucho más que los billetes que tenés en el bolsillo. Es un sistema de intercambio que la humanidad desarrolló para facilitar el comercio y la cooperación.</p><h3>Las tres funciones del dinero</h3><ul><li><strong>Medio de intercambio:</strong> sirve para comprar y vender productos o servicios sin tener que recurrir al trueque directo.</li><li><strong>Unidad de cuenta:</strong> nos permite comparar el valor relativo de las cosas y darles un precio claro.</li><li><strong>Reserva de valor:</strong> podemos guardarlo para consumir o invertir en el futuro sin que pierda todo su poder de compra instantáneamente.</li></ul><p>Esta semana vamos a explorar cómo el dinero impacta en tu vida cotidiana y de qué maneras gestionas tus primeros ingresos y decisiones de valor.</p>`,
-    videoId: "dQw4w9WgXcQ",
-    slidesUrl: "",
-    actTitle: "Tu relación con el dinero",
-    actDesc: "Escribí 3 situaciones de tu semana donde usaste o pensaste en dinero. Para cada una, explicá si fue una decisión consciente o automática, y qué aprendiste sobre tus prioridades financieras actuales."
+    title: '¿Qué es el Dinero y Cómo Funciona?',
+    unlockAt: '2026-01-01T00:00',
+    deadline: '2026-12-31T23:59',
+    text: '<h3>1. Introducción al Dinero</h3><p>El dinero es un medio de intercambio que facilita el comercio de bienes y servicios.</p><h3>2. Funciones Principales</h3><ul><li>Medio de cambio</li><li>Unidad de cuenta</li><li>Depósito de valor</li></ul>',
+    videoId: 'dQw4w9WgXcQ',
+    slidesUrl: '',
+    actTitle: 'Tu primer registro de gastos',
+    actDesc: 'Anota durante 3 días todos los gastos que observes en tu rutina y categorízalos entre necesarios y prescindibles.',
+    isSyllabus: true,
   },
   {
     level: 0,
+    module: 1,
     week: 2,
-    title: "Ingresos y egresos",
-    unlockAt: "2026-05-30T08:00",
-    deadline: "2026-06-06T23:59",
-    text: `<h3>¿Qué es un ingreso?</h3><p>Un ingreso es todo el flujo de dinero que entra a tu bolsillo o cuenta bancaria. Puede provenir de tu sueldo mensual, mesada familiar, trabajos freelance o emprendimientos propios.</p><h3>¿Qué es un egreso?</h3><p>Un egreso es todo aquello que representa una salida de dinero para consumir bienes o servicios: comida, transporte, ropa, entretenimiento, pago de facturas telefónicas, etc.</p><h3>La ecuación básica de las finanzas</h3><p><strong>Ingresos - Egresos = Capacidad de Ahorro (o Generación de Deuda)</strong>.<br>Si tus egresos superan tus ingresos recurrentemente, estás en números rojos y necesitarás financiamiento (lo cual cuesta dinero mediante tasas de interés) o usar ahorros previos. El objetivo inicial es optimizar tus egresos para liberar capacidad de ahorro mensual.</p>`,
-    videoId: "",
-    slidesUrl: "",
-    actTitle: "Mapeá tus ingresos y egresos",
-    actDesc: "Durante esta semana, anotá absolutamente TODOS tus ingresos y egresos diarios. Clasificalos en Necesidades Básicas y Deseos. Al final de la semana, calcula tu balance neto. ¿Te sorprendió ver en qué se te va la mayor parte del dinero?"
+    title: 'La Regla 50/30/20 y el Presupuesto Personal',
+    unlockAt: '2026-01-01T00:00',
+    deadline: '2026-12-31T23:59',
+    text: '<h3>1. La Regla 50/30/20</h3><p>Una fórmula simple para distribuir tus ingresos:</p><ul><li><strong>50% Necesidades</strong></li><li><strong>30% Deseos</strong></li><li><strong>20% Ahorro</strong></li></ul>',
+    videoId: 'dQw4w9WgXcQ',
+    slidesUrl: '',
+    actTitle: 'Armado de presupuesto simulado',
+    actDesc: 'Con un ingreso ficticio de $100.000, diseña una distribución mensual aplicando la regla 50/30/20.',
+    isSyllabus: true,
   },
   {
-    level: 0,
-    week: 3,
-    title: "El presupuesto personal",
-    unlockAt: "2026-06-15T08:00",
-    deadline: "2026-06-22T23:59",
-    text: `<h3>¿Qué es un presupuesto?</h3><p>Un presupuesto es un mapa financiero dinámico. Es el acto de asignar cada peso o dólar a un propósito específico antes de gastarlo realmente. En finanzas corporativas y personales, es la herramienta fundamental de toma de decisiones.</p><h3>La ventaja de anticiparse</h3><p>El presupuesto te permite decirle a tu dinero a dónde ir, en lugar de preguntarte a dónde se fue. Te ayuda a priorizar tus metas a largo plazo por sobre los impulsos de corto plazo.</p>`,
-    videoId: "",
-    slidesUrl: "",
-    actTitle: "Armá tu primer presupuesto",
-    actDesc: "Te desafiamos a usar la regla clásica 50/30/20: 50% de tus ingresos para Necesidades esenciales, 30% para Deseos o gustos, y 20% destinado exclusivamente al Ahorro o inversión. Diseña cómo distribuirías tus ingresos proyectados usando esta regla."
+    level: 1,
+    module: 1,
+    week: 1,
+    title: 'Inflación y Poder Adquisitivo',
+    unlockAt: '2026-01-01T00:00',
+    deadline: '2026-12-31T23:59',
+    text: '<h3>1. ¿Qué es la inflación?</h3><p>Es el aumento generalizado y sostenido de los precios en el tiempo.</p>',
+    videoId: 'dQw4w9WgXcQ',
+    slidesUrl: '',
+    actTitle: 'Cálculo de impacto inflacionario',
+    actDesc: 'Investiga el precio de 3 productos del supermercado y calcula cuánto costarían con una inflación anual del 50%.',
+    isSyllabus: true,
   }
 ];

@@ -1,16 +1,3 @@
-/**
- * types.ts
- * Definición de tipos para la plataforma Fintly Campus
- */
-
-export interface Course {
-  id: number;
-  name: string;
-  desc: string;
-  accent: string;
-  total: number;
-}
-
 export interface User {
   email: string;
   name: string;
@@ -18,44 +5,48 @@ export interface User {
   initials: string;
   level?: number;
   school?: string;
-  password?: string;
 }
 
 export interface ClassItem {
-  id?: string; // identificador único opcional para React keys
+  id?: string;
   level: number;
+  module?: number;
   week: number;
   title: string;
-  unlockAt: string; // formato ISO
-  deadline: string; // formato ISO
-  text: string;     // HTML o texto plano
+  unlockAt?: string;
+  deadline?: string;
+  text: string;
   videoId?: string;
   slidesUrl?: string;
-  actTitle: string;
-  actDesc: string;
+  actTitle?: string;
+  actDesc?: string;
   isSyllabus?: boolean;
   school?: string;
 }
 
 export interface Student {
   name: string;
+  email?: string;
   initials: string;
   level: number;
   progress: number;
   total: number;
   status: 'ok' | 'warn';
-  email?: string;
-  school?: string;
+  school: string;
   registered?: boolean;
 }
 
+export type GradeType = 'Excelente' | 'Muy bien' | 'Bien' | 'Puede mejorar';
+
 export interface ActivitySubmission {
   classLevel: number;
+  /** Módulo 1-4. Opcional por las entregas anteriores al cambio de esquema. */
+  classModule?: number;
   classWeek: number;
   studentEmail: string;
   responseText: string;
   submittedAt: string;
-  grade?: 'Muy bien' | 'Bien' | 'A mejorar' | 'Excelente' | 'Muy bueno' | 'puede mejorar';
+  grade?: GradeType | string;
   feedback?: string;
   correctedBy?: string;
   correctedAt?: string;

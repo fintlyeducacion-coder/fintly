@@ -29,6 +29,7 @@ service cloud.firestore {
       return isSignedIn() && 
              emailOf(request.auth) != "" &&
              (emailOf(request.auth) == "fintlyeducacion@gmail.com" ||
+              emailOf(request.auth) == "fargenti01@gmail.com" ||
               isUserRole(emailOf(request.auth), 'admin') ||
               isUserRole(emailOf(request.auth), 'directivo'));
     }

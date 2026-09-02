@@ -1,24 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { 
-  Users, 
-  FileCheck, 
-  BookOpenCheck, 
-  TrendingUp, 
-  Search, 
-  ArrowLeft, 
-  CheckCircle2, 
-  Award, 
-  MessageSquare, 
-  ChevronRight, 
-  ClipboardList, 
-  GraduationCap, 
-  School,
-  Eye,
-  AlertCircle
+  Users, Search, ArrowLeft, CheckCircle2, Award, 
+  MessageSquare, ChevronRight, ClipboardList, School
 } from 'lucide-react';
 import { Student, ActivitySubmission, ClassItem, User } from '../types';
-import { COURSES } from '../data';
+import { COURSES, ASSOCIATED_SCHOOLS } from '../data';
 
 interface StaffProgressProps {
   students: Student[];
@@ -29,9 +16,21 @@ interface StaffProgressProps {
   onSaveSubmission?: (sub: ActivitySubmission) => void;
 }
 
-const ASSOCIATED_SCHOOLS = [
-  'Red itinere'
+const AVATAR_GRADIENTS = [
+  'bg-gradient-to-br from-violet-600 to-indigo-600',
+  'bg-gradient-to-br from-indigo-600 to-blue-600',
+  'bg-gradient-to-br from-emerald-600 to-teal-600',
+  'bg-gradient-to-br from-rose-600 to-pink-600',
+  'bg-gradient-to-br from-amber-500 to-orange-600',
+  'bg-gradient-to-br from-sky-500 to-blue-600',
+  'bg-gradient-to-br from-purple-600 to-violet-700',
+  'bg-gradient-to-br from-cyan-500 to-indigo-600',
 ];
+
+function getAvatarGradient(name: string): string {
+  const code = name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return AVATAR_GRADIENTS[code % AVATAR_GRADIENTS.length];
+}
 
 export default function StaffProgress({
   students,
@@ -41,26 +40,38 @@ export default function StaffProgress({
   user,
   onSaveSubmission
 }: StaffProgressProps) {
-  // Navigation states for teacher workflow
-  const [selectedSchool, setSelectedSchool] = useState<string | null>(() => {
-    return user.school || null;
-  });
+  // Aislamiento por colegio del directivo: si el directivo tiene un colegio asignado, se fija siempre a ese colegio
+  const directivoSchool = user.school || (ASSOCIATED_SCHOOLS[0]);
+  const [selectedSchool, setSelectedSchool] = useState<string>(directivoSchool);
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
-
-  // Search and tabs inside the active level detail view
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSubTab, setActiveSubTab] = useState<'pending' | 'graded'>('pending');
-
-  // Corrections state
   const [selectedSubmission, setSelectedSubmission] = useState<ActivitySubmission | null>(null);
-  const [gradeInput, setGradeInput] = useState<'Excelente' | 'Muy bueno' | 'puede mejorar' | 'Muy bien' | 'Bien' | 'A mejorar' | null>(null);
+  const [gradeInput, setGradeInput] = useState<'Excelente' | 'Muy bien' | 'Bien' | 'Puede mejorar' | null>(null);
   const [feedbackInput, setFeedbackInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
-  // Sync correction fields when a submission is selected
+  // Sincronizar si cambia el usuario o colegio asignado
+  useEffect(() => {
+    if (user.school) {
+      setSelectedSchool(user.school);
+    }
+  }, [user.school]);
+
+  // Normalize legacy grades
+  const normalizeGrade = (raw?: string): 'Excelente' | 'Muy bien' | 'Bien' | 'Puede mejorar' | null => {
+    if (!raw) return null;
+    const clean = raw.trim().toLowerCase();
+    if (clean === 'excelente') return 'Excelente';
+    if (clean === 'muy bien' || clean === 'muy bueno') return 'Muy bien';
+    if (clean === 'bien') return 'Bien';
+    if (clean === 'puede mejorar' || clean === 'a mejorar') return 'Puede mejorar';
+    return null;
+  };
+
   useEffect(() => {
     if (selectedSubmission) {
-      setGradeInput(selectedSubmission.grade || null);
+      setGradeInput(normalizeGrade(selectedSubmission.grade));
       setFeedbackInput(selectedSubmission.feedback || '');
     }
   }, [selectedSubmission]);
@@ -78,7 +89,6 @@ export default function StaffProgress({
       };
       await onSaveSubmission?.(updatedSub);
       setSelectedSubmission(updatedSub);
-      // Wait a tiny bit for a natural transition
       setTimeout(() => {
         setSelectedSubmission(null);
         setIsSaving(false);
@@ -89,7 +99,6 @@ export default function StaffProgress({
     }
   };
 
-  // Helper sets to trace students of a school
   const getStudentsOfSchool = (schoolName: string) => {
     return students.filter(s => s.school?.toLowerCase() === schoolName.toLowerCase());
   };
@@ -101,7 +110,6 @@ export default function StaffProgress({
     return submissions.filter(sub => schoolStudentEmails.has(sub.studentEmail?.toLowerCase().trim()));
   };
 
-  // Render LEVEL-0: School Selector Screen
   if (!selectedSchool) {
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
@@ -122,8 +130,6 @@ export default function StaffProgress({
             const schoolStudents = getStudentsOfSchool(school);
             const schoolSubmissions = getSubmissionsOfSchool(school);
             const pendingReg = schoolSubmissions.filter(sub => !sub.grade).length;
-            
-            // Average progress calculation
             const avgProgress = schoolStudents.length > 0
               ? Math.round((schoolStudents.reduce((acc, s) => acc + (s.progress / s.total), 0) / schoolStudents.length) * 100)
               : 0;
@@ -137,8 +143,8 @@ export default function StaffProgress({
               >
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="p-3 bg-violet-600/10 text-violet-400 rounded-xl">
-                      <School className="w-6 h-6" />
+                    <div className="w-11 h-11 bg-violet-600/10 border border-violet-500/15 text-violet-400 rounded-xl flex items-center justify-center">
+                      <School className="w-5 h-5" />
                     </div>
                     {pendingReg > 0 ? (
                       <span className="px-2.5 py-1 text-[10px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg animate-pulse uppercase">
@@ -183,14 +189,12 @@ export default function StaffProgress({
     );
   }
 
-  // Render LEVEL-1: Levels of selected school
   if (selectedLevel === null) {
     const schoolStudents = getStudentsOfSchool(selectedSchool);
     const schoolSubmissions = getSubmissionsOfSchool(selectedSchool);
 
     return (
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-        {/* Navigation Breadcrumbs / Title */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
@@ -223,7 +227,6 @@ export default function StaffProgress({
           )}
         </div>
 
-        {/* Dynamic Levels Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {COURSES.map((course) => {
             const levelStudents = schoolStudents.filter(s => s.level === course.id);
@@ -237,14 +240,13 @@ export default function StaffProgress({
                 onClick={() => setSelectedLevel(course.id)}
                 className="bg-neutral-900/60 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl p-6 cursor-pointer hover:border-violet-500/30 transition-all shadow-md relative overflow-hidden flex flex-col justify-between"
               >
-                {/* Visual gradient edge indicator */}
                 <div className={`absolute top-0 left-0 w-1.5 h-full bg-gradient-to-b ${course.accent}`} />
 
                 <div className="pl-2 space-y-4">
                   <div className="flex justify-between items-start">
                     <div>
                       <span className="text-[10px] font-mono font-bold tracking-widest text-violet-400 accent-purple-400 block uppercase">
-                        Nivel {course.id + 1}
+                        Nivel {course.id}
                       </span>
                       <h3 className="font-sans text-lg font-bold text-white light:text-neutral-900 mt-1 leading-tight">
                         {course.name}
@@ -280,24 +282,16 @@ export default function StaffProgress({
     );
   }
 
-  // LEVEL-2: Detailed View of a selected level under a particular school
-  const courseDetail = COURSES[selectedLevel];
-  
-  // Filter students belonging to this school and level
+  const courseDetail = COURSES[selectedLevel] || COURSES[0];
   const studentsInScope = students.filter(s => 
     s.school?.toLowerCase() === selectedSchool.toLowerCase() && s.level === selectedLevel
   );
-
-  // Filter submissions by students in scope for this level
   const emailsInScope = new Set(studentsInScope.map(s => s.email?.toLowerCase().trim()));
   const submissionsInScope = submissions.filter(sub => 
     sub.classLevel === selectedLevel && emailsInScope.has(sub.studentEmail?.toLowerCase().trim())
   );
-
-  // Split submissions into pending/graded
   const pendingSubmissions = submissionsInScope.filter(sub => !sub.grade);
   const gradedSubmissions = submissionsInScope.filter(sub => !!sub.grade);
-
   const displayedStudents = studentsInScope.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.email?.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -305,7 +299,6 @@ export default function StaffProgress({
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-      {/* Dynamic Header & Breadcrumbs navigation */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
         <div>
           <div className="flex items-center gap-2 text-xs text-gray-500 mb-1">
@@ -330,11 +323,11 @@ export default function StaffProgress({
               Niveles ({selectedSchool.split(' ')[0]})
             </button>
             <span>/</span>
-            <span className="text-gray-300 light:text-neutral-700 font-medium">Nivel {selectedLevel + 1}</span>
+            <span className="text-gray-300 light:text-neutral-700 font-medium">Nivel {selectedLevel}</span>
           </div>
 
           <h1 className="font-sans text-xl sm:text-2xl font-bold text-white light:text-neutral-900 flex items-center gap-2 tracking-tight">
-            Nivel {selectedLevel + 1}: {courseDetail.name}
+            Nivel {selectedLevel}: {courseDetail.name}
           </h1>
           <p className="text-xs text-gray-400 light:text-neutral-500 font-medium mt-0.5">
             Colegio: {selectedSchool}
@@ -351,7 +344,6 @@ export default function StaffProgress({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* LEFT COLUMN: RESUMEN PROGRESO DE ALUMNOS (5/12) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="flex items-center justify-between pb-1">
             <h2 className="font-sans text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
@@ -360,7 +352,6 @@ export default function StaffProgress({
             </h2>
           </div>
 
-          {/* Buscador de alumnos interno */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
             <input
@@ -385,7 +376,7 @@ export default function StaffProgress({
                       className="p-4 items-center gap-2 hover:bg-white/[0.02] light:hover:bg-neutral-50/80 transition-colors flex justify-between"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 text-xs font-bold text-white flex items-center justify-center shrink-0">
+                        <div className={`w-8 h-8 rounded-full text-xs font-bold text-white flex items-center justify-center shrink-0 ${getAvatarGradient(s.name)}`}>
                           {s.initials}
                         </div>
                         <div className="min-w-0">
@@ -433,7 +424,6 @@ export default function StaffProgress({
           </div>
         </div>
 
-        {/* RIGHT COLUMN: CALIFICACIONES Y FEEDBACK (7/12) */}
         <div className="lg:col-span-7 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-white/5 light:border-neutral-100">
             <h2 className="font-sans text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
@@ -441,7 +431,6 @@ export default function StaffProgress({
               <span>Tareas y Entregas</span>
             </h2>
 
-            {/* Sub-tabs filters */}
             <div className="flex bg-[#14132b]/40 light:bg-neutral-100/85 backdrop-blur-md p-0.5 rounded-xl border border-white/5 light:border-neutral-200 text-[10px] font-bold relative z-10 gap-0.5 shadow-md">
               <button
                 type="button"
@@ -591,7 +580,6 @@ export default function StaffProgress({
         </div>
       </div>
 
-      {/* DETAILED GRADING DIALOG MODAL */}
       {selectedSubmission && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-[3px] z-50 flex items-center justify-center p-4">
           <motion.div
@@ -599,14 +587,13 @@ export default function StaffProgress({
             animate={{ opacity: 1, scale: 1 }}
             className="bg-[#0f0f22] light:bg-white border border-violet-900/40 light:border-neutral-200 rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl"
           >
-            {/* Modal Header */}
             <div className="p-6 border-b border-white/5 light:border-neutral-200 flex justify-between items-center bg-white/2">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-widest text-violet-400 light:text-violet-600 font-mono">
                   Calificación Pedagógica
                 </span>
                 <h3 className="text-white light:text-neutral-950 font-sans font-bold text-base mt-0.5">
-                  Nivel {selectedSubmission.classLevel + 1} • Clase {selectedSubmission.classWeek}
+                  Nivel {selectedSubmission.classLevel} • Clase {selectedSubmission.classWeek}
                 </h3>
               </div>
               <button
@@ -618,7 +605,6 @@ export default function StaffProgress({
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto no-scrollbar">
               <div>
                 <span className="text-[9px] font-bold font-mono uppercase text-gray-500 tracking-wider">Alumno</span>
@@ -634,36 +620,36 @@ export default function StaffProgress({
                 </div>
               </div>
 
-              {/* Quality Grade Selectors (Excelente | Muy bueno | puede mejorar) */}
               <div className="border-t border-white/5 light:border-neutral-100 pt-5 space-y-3">
                 <span className="text-[9px] font-bold font-mono uppercase text-gray-500 tracking-wider block">
                   Asignar Calificación Cualitativa
                 </span>
                 
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {([
-                    { key: 'Excelente', label: 'Excelente', colorSel: 'bg-emerald-600 border-emerald-500 text-white', colorUnsel: 'bg-emerald-950/15 border-emerald-900/30 text-emerald-400 light:bg-emerald-50 light:text-emerald-700 hover:bg-emerald-950/20' },
-                    { key: 'Muy bueno', label: 'Muy bueno', colorSel: 'bg-indigo-600 border-indigo-500 text-white', colorUnsel: 'bg-indigo-950/15 border-indigo-900/30 text-indigo-400 light:bg-indigo-50 light:text-indigo-700 hover:bg-indigo-950/20' },
-                    { key: 'puede mejorar', label: 'puede mejorar', colorSel: 'bg-amber-600 border-amber-500 text-white', colorUnsel: 'bg-amber-950/15 border-amber-900/30 text-amber-450 light:bg-amber-50 light:text-amber-800 hover:bg-amber-950/20' }
-                  ]).map((g) => {
+                    { key: 'Excelente', label: 'Excelente', emoji: '🌟', colorSel: 'bg-gradient-to-br from-emerald-600 to-teal-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/30', colorUnsel: 'bg-emerald-950/12 border-emerald-900/25 text-emerald-400 light:bg-emerald-50 light:text-emerald-700 hover:bg-emerald-950/22 hover:border-emerald-800/40' },
+                    { key: 'Muy bien', label: 'Muy bien', emoji: '👏', colorSel: 'bg-gradient-to-br from-sky-600 to-blue-600 border-sky-500 text-white shadow-lg shadow-sky-900/30', colorUnsel: 'bg-sky-950/12 border-sky-900/25 text-sky-400 light:bg-sky-50 light:text-sky-700 hover:bg-sky-950/22 hover:border-sky-800/40' },
+                    { key: 'Bien', label: 'Bien', emoji: '👍', colorSel: 'bg-gradient-to-br from-indigo-600 to-violet-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/30', colorUnsel: 'bg-indigo-950/12 border-indigo-900/25 text-indigo-400 light:bg-indigo-50 light:text-indigo-700 hover:bg-indigo-950/22 hover:border-indigo-800/40' },
+                    { key: 'Puede mejorar', label: 'Puede mejorar', emoji: '💪', colorSel: 'bg-gradient-to-br from-amber-600 to-orange-600 border-amber-500 text-white shadow-lg shadow-amber-900/30', colorUnsel: 'bg-amber-950/12 border-amber-900/25 text-amber-400 light:bg-amber-50 light:text-amber-800 hover:bg-amber-950/22 hover:border-amber-800/40' }
+                  ] as const).map((g) => {
                     const isSel = gradeInput === g.key;
                     return (
                       <button
                         key={g.key}
                         type="button"
-                        onClick={() => setGradeInput(g.key as any)}
-                        className={`py-2 px-1 rounded-xl text-[10px] font-bold uppercase tracking-wider text-center border transition-all cursor-pointer ${
+                        onClick={() => setGradeInput(g.key)}
+                        className={`py-3 px-2 rounded-xl text-[10px] font-bold uppercase tracking-wide text-center border transition-all duration-200 cursor-pointer flex flex-col items-center gap-1.5 ${
                           isSel ? g.colorSel : g.colorUnsel
                         }`}
                       >
-                        {g.label}
+                        <span className="text-base">{g.emoji}</span>
+                        <span>{g.label}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Written feedback comment */}
               <div className="space-y-1.5">
                 <span className="text-[9px] font-bold font-mono uppercase text-gray-500 tracking-wider block">
                   Retroalimentación Pedagógica
@@ -677,7 +663,6 @@ export default function StaffProgress({
               </div>
             </div>
 
-            {/* Modal Controls */}
             <div className="p-4 bg-white/2 border-t border-white/5 light:border-neutral-200 flex justify-end gap-2 shrink-0">
               <button
                 type="button"

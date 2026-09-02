@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { DEFAULT_CLASSES, DEMO_USERS, DEMO_STUDENTS } from './data';
+import { DEFAULT_CLASSES, ASSOCIATED_SCHOOLS, SIN_ASIGNAR, COLEGIO_INTERNO } from './data';
 import { ClassItem, User, Student, ActivitySubmission } from './types';
 
 // Componentes modulares
@@ -19,8 +19,8 @@ import StaffProgress from './components/StaffProgress';
 import AdminPanel from './components/AdminPanel';
 
 // Integración de Firebase
-import { db, auth, googleProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from './firebase';
-import { onAuthStateChanged, signOut, deleteUser } from 'firebase/auth';
+import { db, auth, googleProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   collection,
   doc,
@@ -34,7 +34,16 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './firestore-errors';
+import { syllabusId, assignedId, submissionId, submissionIdExistente, idsHistoricos } from './classKeys';
 import { Clock } from 'lucide-react';
+
+// ─── DEV BYPASS ──────────────────────────────────────────────────────────────
+// Poner en null para restaurar el login normal
+// Con un objeto aca se saltea el login (util para maquetar), PERO Firestore
+// rechaza toda lectura/escritura: las reglas exigen sesion real de Firebase Auth.
+// Para probar contra la base de verdad, dejarlo en null.
+const DEV_BYPASS_USER: User | null = null;
+// ─────────────────────────────────────────────────────────────────────────────
 
 const DEMO_EMAILS_TO_DELETE = [
   'sofia@faro.edu.ar',
@@ -54,12 +63,16 @@ const DEMO_EMAILS_TO_DELETE = [
 ];
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    const saved = localStorage.getItem('fintly_logged_user');
-    return saved ? JSON.parse(saved) : null;
-  });
+  // NUNCA hidratamos el usuario desde localStorage: ese dato lo puede escribir
+  // cualquiera desde la consola del navegador. La unica fuente de verdad del rol
+  // es Firebase Auth + el documento en Firestore, que resuelve onAuthStateChanged.
+  const [currentUser, setCurrentUser] = useState<User | null>(
+    DEV_BYPASS_USER ? DEV_BYPASS_USER : null
+  );
 
-  const [authInitialized, setAuthInitialized] = useState<boolean>(false);
+  const [authInitialized, setAuthInitialized] = useState<boolean>(
+    DEV_BYPASS_USER ? true : false
+  );
   
   // Ref para tener acceso al valor más actualizado de currentUser en closures asíncronos y listeners
   const currentUserRef = useRef<User | null>(null);
@@ -68,20 +81,15 @@ export default function App() {
   }, [currentUser]);
 
   const [currentView, setCurrentView] = useState<'login' | 'dashboard' | 'classview' | 'progress' | 'admin' | 'pausado'>(() => {
-    const saved = localStorage.getItem('fintly_logged_user');
-    if (saved) {
-      try {
-        const user = JSON.parse(saved) as User;
-        if (user.role === 'admin') return 'admin';
-        if (user.role === 'directivo') return 'progress';
-        if (user.role === 'pausado') return 'pausado';
-        return 'dashboard';
-      } catch (err) {
-        return 'login';
-      }
+    if (DEV_BYPASS_USER) {
+      if (DEV_BYPASS_USER.role === 'admin') return 'admin';
+      if (DEV_BYPASS_USER.role === 'directivo') return 'progress';
+      return 'dashboard';
     }
+    // Sin bypass arrancamos siempre en login: onAuthStateChanged decide a donde va
     return 'login';
   });
+
   const [authError, setAuthError] = useState<string>('');
   
   // Estado del tema: modo claro u oscuro (por defecto siempre 'dark' en el primer ingreso)
@@ -126,8 +134,26 @@ export default function App() {
     testConnection();
   }, []);
 
+  // --- 1.b COMPLETAR LOGIN QUE VOLVIÓ POR REDIRECCIÓN ---
+  // Si el navegador no soportó el popup, el usuario fue a Google y volvió acá.
+  // getRedirectResult recoge esa sesión; onAuthStateChanged hace el resto.
+  useEffect(() => {
+    if (DEV_BYPASS_USER) return;
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          console.log('Sesión recuperada por redirección:', result.user.email);
+        }
+      })
+      .catch((e) => {
+        console.error('Error al volver de la redirección de Google:', e);
+        setAuthError('No se pudo completar el inicio de sesión. Intentá nuevamente.');
+      });
+  }, []);
+
   // --- 2. ESCUCHAR CAMBIOS DE AUTHENTICATION ---
   useEffect(() => {
+    if (DEV_BYPASS_USER) return; // bypass: skip Firebase auth entirely
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
@@ -150,15 +176,14 @@ export default function App() {
             handleFirestoreError(e, OperationType.GET, `users/${cleanEmail}`);
           }
 
-          // Si es el administrador de Fintly Educación, se asegura de que tenga rol de admin y se guarda/actualiza de inmediato
-          if (cleanEmail === 'fintlyeducacion@gmail.com' && (!userProfile || userProfile.role !== 'admin')) {
+          // Si es el administrador de Fintly Educación o el propietario, se asegura de que tenga rol de admin y se guarda/actualiza de inmediato
+          if ((cleanEmail === 'fintlyeducacion@gmail.com' || cleanEmail === 'fargenti01@gmail.com') && (!userProfile || userProfile.role !== 'admin')) {
             userProfile = {
               email: cleanEmail,
-              name: firebaseUser.displayName || 'Fintly Educación (Admin)',
+              name: firebaseUser.displayName || 'Admin Fintly',
               role: 'admin',
-              initials: 'FE',
-              school: 'Fintly Campus Virtual',
-              password: '123456'
+              initials: 'AD',
+              school: 'Fintly Campus Virtual'
             };
             try {
               await setDoc(doc(db, 'users', cleanEmail), userProfile);
@@ -198,8 +223,7 @@ export default function App() {
                   role: 'alumno',
                   initials: stData.initials || stData.name[0].toUpperCase(),
                   level: stData.level,
-                  school: stData.school || 'Red itinere',
-                  password: '123456'
+                  school: stData.school || SIN_ASIGNAR
                 };
                 // Guardar el perfil en 'users' para habilitar logins híbridos en el futuro
                 await setDoc(doc(db, 'users', cleanEmail), userProfile);
@@ -219,8 +243,7 @@ export default function App() {
               initials: firebaseUser.displayName 
                 ? firebaseUser.displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase() 
                 : cleanEmail.slice(0, 2).toUpperCase(),
-              school: 'Red itinere',
-              password: '123456'
+              school: SIN_ASIGNAR
             };
             try {
               await setDoc(doc(db, 'users', cleanEmail), userProfile);
@@ -269,23 +292,11 @@ export default function App() {
             setCurrentView('dashboard');
           }
         } else {
-          // Si no hay firebaseUser, ver si hay una sesión activa de correo/contraseña guardada
-          const saved = localStorage.getItem('fintly_logged_user');
-          const provider = localStorage.getItem('fintly_login_provider');
-          if (saved && provider === 'email') {
-            try {
-              const user = JSON.parse(saved) as User;
-              setCurrentUser(user);
-            } catch (err) {
-              localStorage.removeItem('fintly_logged_user');
-              localStorage.removeItem('fintly_login_provider');
-              setCurrentUser(null);
-              setCurrentView('login');
-            }
-          } else {
-            setCurrentUser(null);
-            setCurrentView('login');
-          }
+          // Sin sesión de Firebase Auth no hay sesión válida: limpiamos cualquier rastro local
+          localStorage.removeItem('fintly_logged_user');
+          localStorage.removeItem('fintly_login_provider');
+          setCurrentUser(null);
+          setCurrentView('login');
         }
       } catch (err) {
         console.error("General error in onAuthStateChanged wrapper:", err);
@@ -312,9 +323,6 @@ export default function App() {
       if (loadedClasses.length === 0 && currentUser.role === 'admin') {
         const seedClasses = async () => {
           try {
-            const ASSOCIATED_SCHOOLS = [
-              'Red itinere'
-            ];
             const initialSyllabus = DEFAULT_CLASSES.map(cl => ({ ...cl, isSyllabus: true }));
             const initialAssigned: ClassItem[] = [];
             ASSOCIATED_SCHOOLS.forEach(school => {
@@ -331,8 +339,8 @@ export default function App() {
             
             for (const cl of combined) {
               const docId = cl.isSyllabus 
-                ? `syllabus_l${cl.level}_w${cl.week}`
-                : `assigned_s${cl.school?.replace(/[^a-zA-Z0-9]/g, '_')}_l${cl.level}_w${cl.week}`;
+                ? syllabusId(cl.level, cl.module, cl.week)
+                : assignedId(cl.school || '', cl.level, cl.module, cl.week);
               await setDoc(doc(db, 'classes', docId), cl);
             }
           } catch (err) {
@@ -410,10 +418,11 @@ export default function App() {
         }
         
         // Corrección de visualización inmediata en memoria para consistencia
-        if (u.role === 'directivo' || u.role === 'alumno') {
-          u.school = 'Red itinere';
-        } else if (u.role === 'admin') {
-          u.school = 'Fintly Campus Virtual';
+        if (u.role === 'admin') {
+          u.school = COLEGIO_INTERNO;
+        } else if (!u.school) {
+          // Solo completamos si viene vacío: nunca pisamos un colegio ya asignado
+          u.school = SIN_ASIGNAR;
         }
 
         loaded.push(u);
@@ -438,15 +447,19 @@ export default function App() {
         if (snap.exists()) {
           setStudentsByState([snap.data() as Student]);
         } else {
+          const userLevel = currentUser.level || 0;
+          const userSchool = currentUser.school || SIN_ASIGNAR;
+          const availableCount = classes.filter(cl => cl.level === userLevel && !cl.isSyllabus && (cl.school?.toLowerCase() === userSchool.toLowerCase() || !cl.school)).length;
+
           setStudentsByState([{
             name: currentUser.name,
             email: currentUser.email,
             initials: currentUser.initials,
-            level: currentUser.level || 0,
+            level: userLevel,
             progress: 0,
-            total: 16,
+            total: availableCount || 32,
             status: 'ok',
-            school: currentUser.school || 'Red itinere'
+            school: userSchool
           }]);
         }
       }, (error) => {
@@ -468,8 +481,10 @@ export default function App() {
           return;
         }
 
-        // Corrección de visualización inmediata en memoria para consistencia
-        st.school = 'Red itinere';
+        // Respetar el colegio asignado o marcarlo como pendiente si no tiene
+        if (!st.school) {
+          st.school = SIN_ASIGNAR;
+        }
 
         loaded.push(st);
       });
@@ -496,7 +511,7 @@ export default function App() {
 
     const runDatabaseHealing = async () => {
       try {
-        console.log("Healing DB: Deleting demo users and updating schools...");
+        console.log("Healing DB: Deleting demo users...");
         
         // 1. Eliminar todos los alumnos/usuarios de prueba que estén en la base de datos
         for (const email of DEMO_EMAILS_TO_DELETE) {
@@ -505,7 +520,7 @@ export default function App() {
           deleteDoc(doc(db, 'users', email)).catch(() => {});
         }
 
-        // 2. Normalizar colegios de usuarios reales en Firestore
+        // 2. Limpiar usuarios corruptos o de demo en Firestore
         const usersSnap = await getDocs(collection(db, 'users'));
         for (const userDoc of usersSnap.docs) {
           const u = userDoc.data() as User;
@@ -520,21 +535,9 @@ export default function App() {
             console.log(`[Heal] Deleted user named asd/demo: ${cleanEmail}`);
             continue;
           }
-
-          let targetSchool = u.school;
-          if (u.role === 'directivo' || u.role === 'alumno') {
-            targetSchool = 'Red itinere';
-          } else if (u.role === 'admin') {
-            targetSchool = 'Fintly Campus Virtual';
-          }
-
-          if (u.school !== targetSchool) {
-            await setDoc(doc(db, 'users', cleanEmail), { school: targetSchool }, { merge: true });
-            console.log(`[Heal] Updated school for user ${cleanEmail} -> ${targetSchool}`);
-          }
         }
 
-        // 3. Normalizar colegios de alumnos reales en Firestore
+        // 3. Limpiar alumnos corruptos de demo en Firestore
         const studentsSnap = await getDocs(collection(db, 'students'));
         for (const studentDoc of studentsSnap.docs) {
           const st = studentDoc.data() as Student;
@@ -547,11 +550,6 @@ export default function App() {
             console.log(`[Heal] Deleted student record named asd/demo: ${cleanEmail}`);
             continue;
           }
-
-          if (st.school !== 'Red itinere') {
-            await setDoc(doc(db, 'students', studentDoc.id), { school: 'Red itinere' }, { merge: true });
-            console.log(`[Heal] Updated school for student record ${cleanEmail} -> Red itinere`);
-          }
         }
         console.log("Database healing completed!");
       } catch (err) {
@@ -562,33 +560,50 @@ export default function App() {
     runDatabaseHealing();
   }, [currentUser, authInitialized]);
 
-  // Sincronizar el tema activo con la clase del body
+  // Sincronizar el tema activo con la clase del body (con transición suave)
   useEffect(() => {
     localStorage.setItem('fc_theme', theme);
+    document.body.classList.add('theme-switching');
     if (theme === 'light') {
       document.body.classList.add('light');
     } else {
       document.body.classList.remove('light');
     }
+    const t = setTimeout(() => document.body.classList.remove('theme-switching'), 500);
+    return () => clearTimeout(t);
   }, [theme]);
 
   // Mantener actualizado el progreso de cada estudiante basándose en las entregas reales en la base de datos
   useEffect(() => {
-    if (classes.length === 0 || studentsByState.length === 0 || submissions.length === 0) return;
+    if (classes.length === 0 || studentsByState.length === 0) return;
     if (!currentUser) return;
+
+    const now = new Date();
 
     const updateStudentProgressesOnServer = async () => {
       for (const student of studentsByState) {
         const studentEmail = student.email || 'alumno@fintly.pro';
+        const studentSchool = student.school || SIN_ASIGNAR;
         const studentSubmissions = submissions.filter(
           (sub) => sub.studentEmail.toLowerCase() === studentEmail.toLowerCase()
         );
-        const courseClasses = classes.filter((cl) => cl.level === student.level && !cl.isSyllabus);
-        const totalClassesCount = courseClasses.length || 1;
+        const courseClasses = classes.filter(
+          (cl) => cl.level === student.level && !cl.isSyllabus && (cl.school?.toLowerCase() === studentSchool.toLowerCase() || !cl.school)
+        );
+        const totalClassesCount = courseClasses.length || 32;
         const progress = studentSubmissions.length;
-        
-        const isBehind = totalClassesCount > 0 && progress < Math.ceil(totalClassesCount / 1.5);
-        const status = isBehind ? 'warn' : 'ok';
+
+        // Semáforo con criterio temporal real:
+        // Clases que ya vencieron según su deadline
+        const overdueClasses = courseClasses.filter(cl => cl.deadline && now > new Date(cl.deadline));
+        // De esas clases vencidas, cuántas entregó el alumno
+        const completedOverdueCount = overdueClasses.filter(cl => 
+          studentSubmissions.some(s => s.classLevel === cl.level && s.classWeek === cl.week)
+        ).length;
+
+        // Si no hay clases vencidas aún, o entregó todas las clases que ya vencieron -> 'ok' (Verde).
+        // Si adeuda alguna clase con fecha límite vencida -> 'warn' (Amarillo).
+        const status = (overdueClasses.length === 0 || completedOverdueCount >= overdueClasses.length) ? 'ok' : 'warn';
 
         if (student.progress !== progress || student.total !== totalClassesCount || student.status !== status) {
           try {
@@ -614,98 +629,54 @@ export default function App() {
   const handleGoogleLogin = async () => {
     setAuthError('');
     setCurrentUser(null);
+
+    // Errores que significan "este navegador no puede con el popup".
+    // Pasan seguido en Safari iOS y en equipos administrados por el colegio.
+    const POPUP_NO_DISPONIBLE = [
+      'auth/popup-blocked',
+      'auth/operation-not-supported-in-this-environment',
+      'auth/cancelled-popup-request',
+      'auth/web-storage-unsupported',
+    ];
+
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (e: any) {
-      console.error("Google Sign-In failed:", e);
-      setAuthError("No se pudo iniciar sesión con Google. Intentá nuevamente.");
-    }
-  };
+      // El usuario cerró el popup a propósito: no es un error que haya que mostrar.
+      if (e?.code === 'auth/popup-closed-by-user') return;
 
-  const handleLogin = async (email: string, password?: string) => {
-    setAuthError('');
-    setCurrentUser(null);
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPassword = password || '';
-
-    // 1. Buscar si tiene datos en la colección 'users' o 'students' de Firestore
-    let userProfile: User | null = null;
-    let studentData: Student | null = null;
-
-    try {
-      const userSnap = await getDoc(doc(db, 'users', cleanEmail));
-      if (userSnap.exists()) {
-        userProfile = userSnap.data() as User;
-      }
-    } catch (e) {
-      console.warn("Failed to read user doc directly:", e);
-      handleFirestoreError(e, OperationType.GET, `users/${cleanEmail}`);
-    }
-
-    try {
-      const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      const studentSnap = await getDoc(doc(db, 'students', studentDocId));
-      if (studentSnap.exists()) {
-        studentData = studentSnap.data() as Student;
-        // Si no tenía perfil en 'users', creamos uno al vuelo
-        if (!userProfile) {
-          userProfile = {
-            email: cleanEmail,
-            name: studentData.name,
-            role: 'alumno',
-            initials: studentData.initials || studentData.name[0].toUpperCase(),
-            level: studentData.level,
-            school: studentData.school || 'Red itinere',
-            password: '123456' // Contraseña por defecto para alumnos invitados
-          };
-          await setDoc(doc(db, 'users', cleanEmail), userProfile);
-        }
-      }
-    } catch (e) {
-      console.warn("Failed to read student doc directly:", e);
-      const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      handleFirestoreError(e, OperationType.GET, `students/${studentDocId}`);
-    }
-
-
-
-    // 3. Validar si existe en la base de datos
-    if (!userProfile) {
-      throw new Error("No encontramos una cuenta registrada con este correo institucional. Comunicate con tu docente para recibir tu invitación.");
-    }
-
-    // 4. Validar la contraseña suministrada
-    if (userProfile.password !== cleanPassword) {
-      throw new Error("Contraseña incorrecta. Por favor verificala.");
-    }
-
-    // 5. Intentar login en Firebase Auth en background para tokens de sesión
-    try {
-      await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-    } catch (authErr: any) {
-      console.warn("Firebase Auth native login failed or was bypassed:", authErr.code);
-      if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential') {
-        // Si no existe el usuario en Auth pero sí en nuestra base de datos con esa contraseña, creamos la Auth account al vuelo!
+      if (POPUP_NO_DISPONIBLE.includes(e?.code)) {
+        // Segundo intento por redirección: se va a Google y vuelve.
+        // getRedirectResult (más abajo) completa el login al volver.
         try {
-          await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-        } catch (createErr: any) {
-          console.warn("Could not auto-create Firebase Auth account in background:", createErr);
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch (redirErr) {
+          console.error('Google Sign-In por redirección también falló:', redirErr);
         }
       }
-    }
 
-    // 6. Completar sesión local exitosa
-    setCurrentUser(userProfile);
-    localStorage.setItem('fintly_logged_user', JSON.stringify(userProfile));
-    localStorage.setItem('fintly_login_provider', 'email');
+      console.error('Google Sign-In failed:', e);
 
-    // Enrutar al panel correspondiente de forma automática
-    if (userProfile.role === 'admin') {
-      setCurrentView('admin');
-    } else if (userProfile.role === 'directivo') {
-      setCurrentView('progress');
-    } else {
-      setCurrentView('dashboard');
+      // Mensajes concretos por causa: el genérico no deja diagnosticar nada
+      const MENSAJES: Record<string, string> = {
+        'auth/unauthorized-domain':
+          'Este dominio no está autorizado en Firebase. Agregá "localhost" en Firebase Console → Authentication → Settings → Authorized domains.',
+        'auth/operation-not-allowed':
+          'El proveedor de Google no está habilitado. Activalo en Firebase Console → Authentication → Sign-in method → Google.',
+        'auth/invalid-api-key':
+          'La apiKey del archivo firebase-applet-config.json no es válida para este proyecto.',
+        'auth/configuration-not-found':
+          'Falta configurar Authentication en este proyecto de Firebase.',
+        'auth/network-request-failed':
+          'No hubo conexión con Firebase. Revisá la red o si algo está bloqueando el pedido.',
+        'auth/internal-error':
+          'Error interno de Firebase Auth. Suele ser configuración incompleta del proveedor de Google.',
+      };
+
+      const codigo = e?.code || 'sin-codigo';
+      const detalle = MENSAJES[codigo] || (e?.message || 'Error desconocido');
+      setAuthError(`${detalle}  [${codigo}]`);
     }
   };
 
@@ -776,6 +747,7 @@ export default function App() {
 
     const newSubmission: ActivitySubmission = {
       classLevel: activeClassItem.level,
+      classModule: activeClassItem.module ?? 1,
       classWeek: activeClassItem.week,
       studentEmail: currentUser.email.toLowerCase(),
       responseText: responseText.trim(),
@@ -783,7 +755,7 @@ export default function App() {
     };
 
     try {
-      const docId = `${currentUser.email.toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '_')}_l${activeClassItem.level}_w${activeClassItem.week}`;
+      const docId = submissionId(currentUser.email, activeClassItem.level, activeClassItem.module, activeClassItem.week);
       await setDoc(doc(db, 'submissions', docId), newSubmission);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'submissions');
@@ -791,22 +763,23 @@ export default function App() {
   };
 
   // Crear o guardar cambios de una clase en Firestore (Admin)
-  const handleSaveClass = async (classItem: ClassItem, oldKey?: { level: number; week: number }) => {
+  const handleSaveClass = async (classItem: ClassItem, oldKey?: { level: number; module?: number; week: number }) => {
     try {
       const docId = classItem.isSyllabus 
-        ? `syllabus_l${classItem.level}_w${classItem.week}`
-        : `assigned_s${classItem.school?.replace(/[^a-zA-Z0-9]/g, '_')}_l${classItem.level}_w${classItem.week}`;
+        ? syllabusId(classItem.level, classItem.module, classItem.week)
+        : assignedId(classItem.school || '', classItem.level, classItem.module, classItem.week);
 
-      if (oldKey && (oldKey.level !== classItem.level || oldKey.week !== classItem.week)) {
+      if (oldKey && (oldKey.level !== classItem.level || oldKey.module !== classItem.module || oldKey.week !== classItem.week)) {
         const oldDocId = classItem.isSyllabus 
-          ? `syllabus_l${oldKey.level}_w${oldKey.week}`
-          : `assigned_s${classItem.school?.replace(/[^a-zA-Z0-9]/g, '_')}_l${oldKey.level}_w${oldKey.week}`;
+          ? syllabusId(oldKey.level, oldKey.module, oldKey.week)
+          : assignedId(classItem.school || '', oldKey.level, oldKey.module, oldKey.week);
         await deleteDoc(doc(db, 'classes', oldDocId));
       }
 
       await setDoc(doc(db, 'classes', docId), classItem);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'classes');
+      throw error; // que lo vea quien llamó, para poder avisarle al usuario
     }
   };
 
@@ -814,7 +787,7 @@ export default function App() {
   const handleAssignClass = async (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => {
     try {
       for (const schoolName of schools) {
-        const docId = `assigned_s${schoolName.replace(/[^a-zA-Z0-9]/g, '_')}_l${sourceClass.level}_w${sourceClass.week}`;
+        const docId = assignedId(schoolName, sourceClass.level, sourceClass.module, sourceClass.week);
         const assignedItem: ClassItem = {
           ...sourceClass,
           isSyllabus: false,
@@ -827,53 +800,54 @@ export default function App() {
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'classes');
+      throw error; // que lo vea quien llamó, para poder avisarle al usuario
     }
   };
 
   // Borrar una clase en Firestore (Admin)
-  const handleDeleteClass = async (level: number, week: number, school?: string, id?: string) => {
+  const handleDeleteClass = async (
+    level: number,
+    week: number,
+    school?: string,
+    id?: string,
+    module?: number
+  ) => {
     try {
-      // 1. Intentar borrar por ID exacto si se recibe
+      // 1. Por ID exacto si lo tenemos
       if (id) {
         await deleteDoc(doc(db, 'classes', id));
       }
 
-      // 2. Borrar posibles variantes de ID de documento por seguridad
-      if (school) {
-        // Variante 1: Casing original con reemplazo de raros
-        const docId1 = `assigned_s${school.replace(/[^a-zA-Z0-9]/g, '_')}_l${level}_w${week}`;
-        await deleteDoc(doc(db, 'classes', docId1));
+      // 2. El ID actual (con módulo)
+      const idActual = school
+        ? assignedId(school, level, module, week)
+        : syllabusId(level, module, week);
+      await deleteDoc(doc(db, 'classes', idActual)).catch(() => {});
 
-        // Variante 2: Lowercase del reemplazo
-        const docId2 = `assigned_s${school.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_')}_l${level}_w${week}`;
-        await deleteDoc(doc(db, 'classes', docId2));
-
-        // Variante 3: Normalizado sin tildes
-        const normalized = school.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-        const docId3 = `assigned_s${normalized.replace(/[^a-zA-Z0-9]/g, '_')}_l${level}_w${week}`;
-        await deleteDoc(doc(db, 'classes', docId3));
-
-        // Variante 4: Normalizado sin tildes en lowercase
-        const docId4 = `assigned_s${normalized.toLowerCase().replace(/[^a-zA-Z0-9]/g, '_')}_l${level}_w${week}`;
-        await deleteDoc(doc(db, 'classes', docId4));
-      } else {
-        const docId = `syllabus_l${level}_w${week}`;
-        await deleteDoc(doc(db, 'classes', docId));
+      // 3. Variantes históricas sin módulo, para limpiar lo que quedó de antes
+      for (const viejo of idsHistoricos(school, level, week)) {
+        await deleteDoc(doc(db, 'classes', viejo)).catch(() => {});
       }
 
-      const matchingSubmissions = submissions.filter((sub) => {
+      // 4. Las entregas de esa clase
+      const entregasDeLaClase = submissions.filter((sub) => {
+        // Las entregas viejas no tienen classModule: si falta, no filtramos por módulo
+        const mismoModulo = sub.classModule === undefined || sub.classModule === (module ?? 1);
+        const mismaClase = sub.classLevel === level && sub.classWeek === week && mismoModulo;
+        if (!mismaClase) return false;
+
         if (school) {
-          const studentObj = studentsByState.find(st => st.email?.toLowerCase() === sub.studentEmail.toLowerCase());
-          const isFromSchool = studentObj?.school?.toLowerCase() === school.toLowerCase();
-          return sub.classLevel === level && sub.classWeek === week && isFromSchool;
-        } else {
-          return sub.classLevel === level && sub.classWeek === week;
+          const alumno = studentsByState.find(
+            st => st.email?.toLowerCase() === sub.studentEmail.toLowerCase()
+          );
+          return alumno?.school?.toLowerCase() === school.toLowerCase();
         }
+        return true;
       });
 
-      for (const sub of matchingSubmissions) {
-        const subDocId = `${sub.studentEmail.toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '_')}_l${sub.classLevel}_w${sub.classWeek}`;
-        await deleteDoc(doc(db, 'submissions', subDocId));
+      for (const sub of entregasDeLaClase) {
+        const subId = submissionIdExistente(sub.studentEmail, sub.classLevel, sub.classModule, sub.classWeek);
+        await deleteDoc(doc(db, 'submissions', subId)).catch(() => {});
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'classes');
@@ -902,8 +876,7 @@ export default function App() {
           role: 'alumno',
           initials: student.initials || student.name[0].toUpperCase(),
           level: student.level,
-          school: student.school,
-          password: '123456' // Contraseña por defecto para nuevos alumnos invitados
+          school: student.school
         });
 
         // ENVIAR INVITACIÓN AUTOMÁTICA VÍA FIREBASE (Trigger Email Extension)
@@ -1019,16 +992,13 @@ export default function App() {
         return;
       }
       const existingData = userSnap.data() as User;
-      let finalSchool = 'Red itinere';
+      let finalSchool = school || existingData.school || SIN_ASIGNAR;
       if (targetRole === 'admin') {
         finalSchool = 'Fintly Campus Virtual';
       } else if (targetRole === 'directivo') {
-        finalSchool = 'Red itinere';
+        finalSchool = school || existingData.school || SIN_ASIGNAR;
       } else if (targetRole === 'alumno') {
-        finalSchool = school || existingData.school || 'Red itinere';
-        if (finalSchool !== 'Red itinere') {
-          finalSchool = 'Red itinere';
-        }
+        finalSchool = school || existingData.school || SIN_ASIGNAR;
       }
 
       const updatedUser: User = {
@@ -1039,7 +1009,7 @@ export default function App() {
       };
 
       await setDoc(userRef, updatedUser);
-      console.log(`Successfully approved user ${cleanEmail} to role ${targetRole}`);
+      console.log(`Successfully approved user ${cleanEmail} to role ${targetRole} for school ${finalSchool}`);
 
       // Si es aprobado como alumno, asegurarse de que exista su registro en la colección 'students'
       if (targetRole === 'alumno') {
@@ -1047,14 +1017,17 @@ export default function App() {
         const studentDocRef = doc(db, 'students', studentDocId);
         const studentSnap = await getDoc(studentDocRef);
 
+        const assignedLevel = updatedUser.level || 0;
+        const availableClassesCount = classes.filter(cl => cl.level === assignedLevel && !cl.isSyllabus && (cl.school?.toLowerCase() === finalSchool.toLowerCase() || !cl.school)).length;
+
         const studentRecord: Student = {
           name: updatedUser.name,
           email: cleanEmail,
           initials: updatedUser.initials || updatedUser.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase(),
-          level: updatedUser.level || 0,
+          level: assignedLevel,
           school: finalSchool,
           progress: studentSnap.exists() ? (studentSnap.data() as Student).progress : 0,
-          total: studentSnap.exists() ? (studentSnap.data() as Student).total : 16,
+          total: studentSnap.exists() ? (studentSnap.data() as Student).total : (availableClassesCount || 32),
           status: studentSnap.exists() ? (studentSnap.data() as Student).status : 'ok',
           registered: true
         };
@@ -1082,80 +1055,11 @@ export default function App() {
   // Guardar corrección cualitativa y comentario técnico en Firestore (Docentes)
   const handleSaveSubmission = async (submission: ActivitySubmission) => {
     try {
-      const docId = `${submission.studentEmail.toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '_')}_l${submission.classLevel}_w${submission.classWeek}`;
+      const docId = submissionIdExistente(submission.studentEmail, submission.classLevel, submission.classModule, submission.classWeek);
       await setDoc(doc(db, 'submissions', docId), submission, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'submissions');
     }
-  };
-
-  // Crear registro individual de alumno y vincular credenciales
-  const handleRegisterWithEmail = async (email: string, password: string, name: string) => {
-    setAuthError('');
-    const cleanEmail = email.trim().toLowerCase();
-    
-    // 1. Validar que se encuentre previamente invitado por el colegio en la lista de alumnos directamente en Firestore
-    const docId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-    const studentDocRef = doc(db, 'students', docId);
-    let studentData: Student | null = null;
-    
-    try {
-      const studentSnap = await getDoc(studentDocRef);
-      if (!studentSnap.exists()) {
-        throw new Error("Lamentablemente tu correo institucional no se encuentra en la lista de alumnos invitados. Por favor contactá a tu docente de curso.");
-      }
-      studentData = studentSnap.data() as Student;
-    } catch (e: any) {
-      if (e.message && e.message.includes("invitados")) {
-        throw e;
-      }
-      // Fallback local en caso de que Firestore falle por falta de red, etc.
-      const foundInState = studentsByState.find(s => s.email?.toLowerCase() === cleanEmail);
-      if (!foundInState) {
-        throw new Error("Lamentablemente tu correo institucional no se encuentra en la lista de alumnos invitados. Por favor contactá a tu docente de curso.");
-      }
-      studentData = foundInState;
-    }
-
-    // 2. Registrar en Firebase Auth
-    try {
-      await createUserWithEmailAndPassword(auth, cleanEmail, password);
-    } catch (err: any) {
-      if (err.code === 'auth/operation-not-allowed') {
-        console.warn("Email-password auth is currently disabled in Firebase, relying on direct Firestore persistence.");
-      } else if (err.code === 'auth/email-already-in-use') {
-        throw new Error("Este correo electrónico ya tiene una cuenta registrada. Podés iniciar sesión directamente o contactar soporte.");
-      } else {
-        throw err;
-      }
-    }
-
-    // 3. Crear el documento completo en la coleccion de users de Firestore
-    const initials = studentData.initials || name.trim().split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'AL';
-    const newUserProfile: User = {
-      email: cleanEmail,
-      name: studentData.name || name.trim(),
-      role: 'alumno',
-      initials,
-      level: studentData.level,
-      school: studentData.school,
-      password: password // Almacenamos la contraseña de manera segura en el documento del usuario para inicios de sesión híbridos resilientes
-    };
-
-    try {
-      await setDoc(doc(db, 'users', cleanEmail), newUserProfile);
-      
-      // 4. Actualizar el alumno asignándole registrado: true
-      await setDoc(studentDocRef, { ...studentData, registered: true }, { merge: true });
-    } catch (dbErr) {
-      console.error("Database registration records could not be fully written (possible write permission issue):", dbErr);
-    }
-
-    // 5. Configurar sesión de React y localStorage para persistencia híbrida segura
-    setCurrentUser(newUserProfile);
-    localStorage.setItem('fintly_logged_user', JSON.stringify(newUserProfile));
-    localStorage.setItem('fintly_login_provider', 'email');
-    setCurrentView('dashboard');
   };
 
   return (
@@ -1181,13 +1085,34 @@ export default function App() {
             onNavigateHome={handleNavigateHome}
             theme={theme}
             onToggleTheme={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+            classes={classes}
+            onOpenClass={handleOpenClass}
           />
         )}
 
         {/* Pantallas del Campus Virtual con transiciones finas de animador */}
         <main className="flex-1 w-full">
           <AnimatePresence mode="wait">
-            {currentView === 'login' && (
+            {/* Hasta que Firebase confirme quien sos no mostramos NINGUNA vista con rol.
+                Sin esto, el panel se pintaba a partir de localStorage, que es editable. */}
+            {!authInitialized && (
+              <motion.div
+                key="auth-loading"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex flex-col items-center justify-center min-h-[70vh] gap-4"
+              >
+                <span className="relative w-10 h-10">
+                  <span className="absolute inset-0 rounded-full border-2 border-violet-500/15" />
+                  <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 animate-spin-slow" />
+                </span>
+                <span className="text-xs text-slate-500 font-mono tracking-wide">Verificando sesion…</span>
+              </motion.div>
+            )}
+
+            {authInitialized && currentView === 'login' && (
               <motion.div
                 key="login-screen"
                 initial={{ opacity: 0 }}
@@ -1199,7 +1124,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {currentView === 'dashboard' && currentUser && (
+            {authInitialized && currentView === 'dashboard' && currentUser && (
               <motion.div
                 key="dashboard-screen"
                 initial={{ opacity: 0, y: 15 }}
@@ -1216,7 +1141,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {currentView === 'classview' && currentUser && activeClassItem && (
+            {authInitialized && currentView === 'classview' && currentUser && activeClassItem && (
               <motion.div
                 key="classview-screen"
                 initial={{ opacity: 0, scale: 0.99 }}
@@ -1234,48 +1159,58 @@ export default function App() {
               </motion.div>
             )}
 
-            {currentView === 'pausado' && currentUser && (
+            {authInitialized && currentView === 'pausado' && currentUser && (
               <motion.div
                 key="paused-screen"
-                initial={{ opacity: 0, scale: 0.95 }}
+                initial={{ opacity: 0, scale: 0.96 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.4 }}
-                className="max-w-md mx-auto px-6 py-16 text-center"
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                className="flex items-center justify-center min-h-[80vh] px-4"
               >
-                <div className="bg-neutral-900/80 light:bg-white p-8 rounded-2xl border border-white/5 light:border-neutral-200 shadow-2xl space-y-6">
-                  <div className="mx-auto w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-400">
-                    <Clock className="w-8 h-8 animate-pulse" />
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <h2 className="text-xl font-semibold text-white light:text-neutral-900 tracking-tight">
-                      Cuenta Pendiente de Activación
-                    </h2>
-                    <p className="text-gray-400 light:text-neutral-500 text-sm leading-relaxed">
-                      Lo sentimos, pero tu cuenta todavía no se encuentra registrada o habilitada en la plataforma.
-                    </p>
-                  </div>
+                <div className="relative max-w-sm w-full">
+                  {/* Outer glow */}
+                  <div className="absolute -inset-px rounded-[24px] bg-gradient-to-br from-amber-500/15 via-transparent to-orange-500/10 blur-[2px] pointer-events-none" />
+                  <div className="relative bg-[#0a0a1a]/90 light:bg-white border border-white/10 light:border-neutral-200 rounded-[22px] p-8 shadow-2xl space-y-6 text-center backdrop-blur-xl">
+                    {/* Icon */}
+                    <div className="relative mx-auto w-16 h-16">
+                      <div className="absolute inset-0 rounded-full bg-amber-500/15 animate-ping-slow" />
+                      <div className="relative w-16 h-16 rounded-full bg-amber-500/12 border border-amber-500/20 flex items-center justify-center">
+                        <Clock className="w-7 h-7 text-amber-400" />
+                      </div>
+                    </div>
 
-                  <div className="p-4 bg-amber-500/5 light:bg-amber-50 rounded-xl border border-amber-500/10 text-xs text-amber-200 light:text-amber-800 leading-normal text-left">
-                    Ponte en contacto con tu equipo directivo para activar tu cuenta y asignarte un rol.
-                  </div>
+                    <div className="space-y-2">
+                      <h2 className="font-display text-xl font-bold text-white light:text-neutral-900 tracking-tight">
+                        Cuenta en revisión
+                      </h2>
+                      <p className="text-gray-400 light:text-neutral-500 text-sm leading-relaxed">
+                        Tu cuenta está registrada pero aún no fue habilitada por el equipo directivo.
+                      </p>
+                    </div>
 
-                  <div className="text-gray-500 text-[10px] font-mono">
-                    Registrado como: {currentUser.email}
+                    <div className="p-4 bg-amber-500/6 light:bg-amber-50 rounded-xl border border-amber-500/12 light:border-amber-200/60 text-xs text-amber-300 light:text-amber-800 leading-relaxed text-left flex items-start gap-2.5">
+                      <span className="mt-0.5 text-amber-400">💬</span>
+                      <span>Comunicate con tu equipo docente o directivo para que activen tu acceso y te asignen un nivel.</span>
+                    </div>
+
+                    <div className="py-2.5 px-3 bg-white/3 light:bg-neutral-50 rounded-lg border border-white/5 light:border-neutral-200">
+                      <span className="text-[10px] text-gray-500 font-mono block">Cuenta registrada como</span>
+                      <span className="text-xs text-gray-300 light:text-neutral-700 font-mono font-semibold">{currentUser.email}</span>
+                    </div>
+
+                    <button
+                      onClick={handleLogout}
+                      className="w-full py-2.5 bg-white/[0.04] hover:bg-white/[0.08] light:bg-neutral-100 light:hover:bg-neutral-200 border border-white/8 light:border-neutral-200 text-gray-400 hover:text-white light:text-neutral-600 rounded-xl text-xs font-semibold cursor-pointer transition-all"
+                    >
+                      Cerrar sesión
+                    </button>
                   </div>
-                  
-                  <button
-                    onClick={handleLogout}
-                    className="w-full py-2.5 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 border border-white/10 light:border-neutral-200 text-gray-300 light:text-neutral-700 rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-                  >
-                    Cerrar Sesión
-                  </button>
                 </div>
               </motion.div>
             )}
 
-            {currentView === 'progress' && currentUser && (
+            {authInitialized && currentView === 'progress' && currentUser && (
               <motion.div
                 key={`progress-screen-${homeResetKey}`}
                 initial={{ opacity: 0, y: 15 }}
@@ -1294,7 +1229,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {currentView === 'admin' && currentUser && (
+            {authInitialized && currentView === 'admin' && currentUser && (
               <motion.div
                 key={`admin-screen-${homeResetKey}`}
                 initial={{ opacity: 0, y: 15 }}
@@ -1310,8 +1245,6 @@ export default function App() {
                   onSaveClass={handleSaveClass}
                   onDeleteClass={handleDeleteClass}
                   onAssignClass={handleAssignClass}
-                  onSaveStudent={handleSaveStudent}
-                  onDeleteStudent={handleDeleteStudent}
                   onApproveUser={handleApproveUser}
                   onDeleteUser={handleDeleteUser}
                 />
@@ -1323,3 +1256,4 @@ export default function App() {
     </div>
   );
 }
+

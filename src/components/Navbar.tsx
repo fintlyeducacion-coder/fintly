@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { LogOut, Sun, Moon } from 'lucide-react';
-import { User as UserType } from '../types';
+import { User as UserType, ClassItem } from '../types';
+import NotificationBell from './NotificationBell';
 
 interface NavbarProps {
   user: UserType;
@@ -8,90 +9,135 @@ interface NavbarProps {
   onNavigateHome: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  classes?: ClassItem[];
+  onOpenClass?: (level: number, week: number) => void;
 }
 
-export default function Navbar({
-  user,
-  onLogout,
-  onNavigateHome,
-  theme,
-  onToggleTheme
-}: NavbarProps) {
-  // Configuración de la insignia por rol
-  const getRoleBadge = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-extrabold tracking-widest uppercase rounded-full bg-violet-500/10 border border-violet-500/20 text-violet-400 light:bg-violet-50 light:border-violet-200/80 light:text-violet-700 font-mono select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 light:bg-violet-600 shadow-[0_0_8px_rgba(139,92,246,0.6)]" />
-            <span>Admin</span>
-          </div>
-        );
-      case 'directivo':
-        return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-extrabold tracking-widest uppercase rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 light:bg-indigo-50 light:border-indigo-200/80 light:text-indigo-700 font-mono select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 light:bg-indigo-600 shadow-[0_0_8px_rgba(99,102,241,0.6)]" />
-            <span>Directivo</span>
-          </div>
-        );
-      case 'pausado':
-        return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-extrabold tracking-widest uppercase rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 light:bg-amber-50 light:border-amber-200/80 light:text-amber-700 font-mono select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 light:bg-amber-600 shadow-[0_0_8px_rgba(245,158,11,0.6)] animate-pulse" />
-            <span>Pendiente</span>
-          </div>
-        );
-      default:
-        return (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 text-[9px] font-extrabold tracking-widest uppercase rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 light:bg-emerald-50 light:border-emerald-200/80 light:text-emerald-700 font-mono select-none">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 light:bg-emerald-600 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
-            <span>Alumno</span>
-          </div>
-        );
-    }
-  };
+const ROLE_CONFIG: Record<string, { label: string; dot: string; avatar: string; badge: string }> = {
+  admin: {
+    label: 'Admin',
+    dot: 'bg-violet-400',
+    avatar: 'from-violet-600 to-indigo-600',
+    badge: 'text-violet-400 light:text-violet-600',
+  },
+  directivo: {
+    label: 'Directivo',
+    dot: 'bg-indigo-400',
+    avatar: 'from-indigo-500 to-blue-600',
+    badge: 'text-indigo-400 light:text-indigo-600',
+  },
+  alumno: {
+    label: 'Alumno',
+    dot: 'bg-emerald-400',
+    avatar: 'from-emerald-500 to-teal-600',
+    badge: 'text-emerald-400 light:text-emerald-600',
+  },
+  pausado: {
+    label: 'Pendiente',
+    dot: 'bg-amber-400 animate-pulse-slow',
+    avatar: 'from-amber-500 to-orange-500',
+    badge: 'text-amber-400 light:text-amber-600',
+  },
+};
+
+/* Separador entre grupos funcionales */
+const Divider = () => (
+  <span className="w-px h-5 bg-white/[0.07] light:bg-slate-200 shrink-0" aria-hidden="true" />
+);
+
+export default function Navbar({ user, onLogout, onNavigateHome, theme, onToggleTheme, classes = [], onOpenClass }: NavbarProps) {
+  const cfg = ROLE_CONFIG[user.role] ?? ROLE_CONFIG.alumno;
+  const firstName = user.name.split(' ')[0];
 
   return (
-    <div className="sticky top-4 z-50 w-full px-4 sm:px-6 max-w-7xl mx-auto transition-all">
-      <nav className="liquid-glass rounded-2xl px-5 py-3 flex items-center justify-between">
-        {/* Logo Linkable */}
-        <div 
-          onClick={onNavigateHome}
-          className="cursor-pointer select-none font-display font-extrabold text-2xl tracking-normal bg-gradient-to-r from-violet-400 via-indigo-400 to-sky-400 bg-clip-text text-transparent transform active:scale-95 transition-transform"
-        >
-          Fintly
+    <div className="sticky top-0 z-50 w-full">
+      <nav className="glass-nav-full w-full px-3 sm:px-6 h-[58px]">
+        <div className="max-w-7xl mx-auto h-full flex items-center justify-between gap-3">
+
+        {/* ══ IZQUIERDA — marca + contexto ══════════════════ */}
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+
+          {/* Marca */}
+          <motion.button
+            onClick={onNavigateHome}
+            whileTap={{ scale: 0.95 }}
+            title="Ir al inicio"
+            className="group flex items-center cursor-pointer select-none shrink-0 pl-1"
+          >
+            <span className="relative flex items-center h-[28px] rounded-[9px] bg-gradient-to-br from-violet-600 via-indigo-600 to-sky-500 shadow-lg shadow-violet-950/50 light:shadow-violet-300/50 overflow-hidden px-[8px] transition-shadow duration-300 group-hover:shadow-violet-800/60">
+              <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
+              <span className="relative font-display font-extrabold text-white text-[14px] leading-none">F</span>
+              <span className="relative overflow-hidden max-w-0 opacity-0 group-hover:max-w-[52px] group-hover:opacity-100 transition-[max-width,opacity] duration-300 ease-out">
+                <span className="font-display font-extrabold text-white text-[14px] leading-none whitespace-nowrap">intly</span>
+              </span>
+            </span>
+          </motion.button>
+
+          <span className="hidden sm:block"><Divider /></span>
+
+          {/* Badge de rol */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 h-[26px] rounded-full bg-white/[0.04] light:bg-slate-100 border border-white/[0.07] light:border-slate-200 shrink-0">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${cfg.dot}`} />
+            <span className={`text-[10px] font-bold font-mono tracking-wider uppercase leading-none ${cfg.badge}`}>
+              {cfg.label}
+            </span>
+          </div>
+
+          {/* Tema */}
+          <motion.button
+            onClick={onToggleTheme}
+            whileTap={{ scale: 0.9 }}
+            title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
+            aria-label={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
+            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-white light:text-slate-500 light:hover:text-slate-800 hover:bg-white/[0.07] light:hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+          >
+            <motion.span
+              key={theme}
+              initial={{ rotate: -25, opacity: 0, scale: 0.7 }}
+              animate={{ rotate: 0, opacity: 1, scale: 1 }}
+              transition={{ duration: 0.18 }}
+              className="flex"
+            >
+              {theme === 'light'
+                ? <Moon className="w-[15px] h-[15px]" />
+                : <Sun className="w-[15px] h-[15px]" />}
+            </motion.span>
+          </motion.button>
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* Role Badge */}
-          {getRoleBadge(user.role)}
+        {/* ══ DERECHA — novedades + identidad ═══════════════ */}
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
 
-          {/* Theme Toggle Button */}
+          {/* Campanita — solo alumnos */}
+          {user.role === 'alumno' && onOpenClass && (
+            <>
+              <NotificationBell user={user} classes={classes} onOpenClass={onOpenClass} />
+              <Divider />
+            </>
+          )}
+
+          {/* Identidad */}
+          <div className="flex items-center gap-2 select-none">
+            <div className={`w-[30px] h-[30px] rounded-full bg-gradient-to-br ${cfg.avatar} flex items-center justify-center text-[10px] font-bold text-white shrink-0 shadow-md ring-1 ring-white/10`}>
+              {user.initials}
+            </div>
+            <span className="hidden md:block text-[13px] font-medium text-slate-300 light:text-slate-600 leading-none">
+              {firstName}
+            </span>
+          </div>
+
+          {/* Salir */}
           <motion.button
-            whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
-            onClick={onToggleTheme}
-            className="p-2 rounded-lg bg-white/5 border border-white/10 hover:border-violet-500/35 hover:bg-white/10 light:bg-neutral-100 light:border-neutral-300/60 light:hover:bg-neutral-200 text-gray-400 hover:text-white light:text-neutral-600 light:hover:text-neutral-900 cursor-pointer transition-all flex items-center justify-center h-8 w-8"
-            title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
-          >
-            {theme === 'light' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
-          </motion.button>
-
-          {/* User Info (Name only) */}
-          <span className="text-gray-300 light:text-neutral-700 text-sm font-semibold select-none">
-            {user.name.split(' ')[0]}
-          </span>
-
-          {/* Logout BUTTON */}
-          <motion.button
-            whileHover={{ scale: 1.03 }}
-            whileTap={{ scale: 0.97 }}
             onClick={onLogout}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 border border-white/10 hover:border-violet-500/30 hover:bg-white/10 light:bg-neutral-100 light:border-neutral-200 light:hover:bg-neutral-200/50 text-gray-400 hover:text-white light:text-neutral-600 light:hover:text-neutral-900 rounded-lg text-xs font-medium cursor-pointer transition-colors"
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            className="flex items-center gap-1.5 h-9 px-2.5 rounded-xl text-slate-400 hover:text-rose-400 light:text-slate-500 light:hover:text-rose-500 hover:bg-rose-500/[0.08] transition-colors text-xs font-semibold cursor-pointer"
           >
-            <LogOut className="w-3.5 h-3.5" />
-            <span>Salir</span>
+            <LogOut className="w-[15px] h-[15px] shrink-0" />
+            <span className="hidden sm:block">Salir</span>
           </motion.button>
+        </div>
         </div>
       </nav>
     </div>

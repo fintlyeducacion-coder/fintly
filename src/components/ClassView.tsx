@@ -1,40 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
-import { ArrowLeft, BookOpen, Video, Presentation, FilePenLine, Clock, CalendarDays, CheckCircle2, History } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  ArrowLeft, BookOpen, Video, Presentation, FilePenLine,
+  Clock, CalendarDays, CheckCircle2, History, ChevronRight,
+} from 'lucide-react';
 import { ClassItem, User, ActivitySubmission } from '../types';
+import { sanitizeHtml } from '../sanitize';
 import { COURSES } from '../data';
 
-const EMOJI_PARTICLES = ['🎉', '🌟', '💸', '🚀', '🔥', '👏', '🧠', '💼'];
-
-function ConfettiSower() {
+/* ── Confetti ─────────────────────────────────────────────────── */
+const PARTICLES = ['🎉', '🌟', '💸', '🚀', '🔥', '👏', '🧠', '💼'];
+function Confetti() {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none z-50">
-      {Array.from({ length: 28 }).map((_, i) => {
-        const emoji = EMOJI_PARTICLES[i % EMOJI_PARTICLES.length];
-        const angle = (i * 360) / 28;
-        const radius = 60 + Math.random() * 150;
+      {Array.from({ length: 24 }).map((_, i) => {
+        const angle  = (i * 360) / 24;
+        const radius = 60 + Math.random() * 130;
         const x = Math.cos((angle * Math.PI) / 180) * radius;
         const y = Math.sin((angle * Math.PI) / 180) * radius - 30;
-        
         return (
           <motion.div
             key={i}
             initial={{ scale: 0, opacity: 1, x: 0, y: 0, rotate: 0 }}
-            animate={{
-              scale: [0, 1.3, 1, 0.7, 0],
-              opacity: [1, 1, 0.9, 0.4, 0],
-              x: x,
-              y: y,
-              rotate: [0, Math.random() * 360 + 180],
-            }}
-            transition={{
-              duration: 2.5,
-              delay: (i % 7) * 0.08,
-              ease: "easeOut"
-            }}
-            className="absolute left-1/2 top-1/2 -ml-3 -mt-3 text-base sm:text-xl select-none"
+            animate={{ scale: [0, 1.2, 0.8, 0], opacity: [1, 1, 0.6, 0], x, y, rotate: [0, Math.random() * 360 + 180] }}
+            transition={{ duration: 2.2, delay: (i % 7) * 0.07, ease: 'easeOut' }}
+            className="absolute left-1/2 top-1/2 -ml-3 -mt-3 text-lg select-none"
           >
-            {emoji}
+            {PARTICLES[i % PARTICLES.length]}
           </motion.div>
         );
       })}
@@ -42,376 +34,357 @@ function ConfettiSower() {
   );
 }
 
+/* ── Helpers ──────────────────────────────────────────────────── */
 function getEmbedUrl(input: string): string {
   if (!input) return '';
-  const trimmed = input.trim();
-  
-  // Try to extract URL from src="..." parameter
-  const srcRegex = /src\s*=\s*["'“«’‘]([^"'”»’‘]+)["'”»’‘]/i;
-  const match = trimmed.match(srcRegex);
-  if (match && match[1]) {
-    return match[1].trim().replace(/["'”»’‘>]+$/, '').trim();
-  }
-  
-  return trimmed;
+  const m = input.trim().match(/src\s*=\s*["'«'']([^"'»'']+)["'»'']/i);
+  return m?.[1]?.trim().replace(/["'»''>]+$/, '').trim() ?? input.trim();
 }
 
-interface ClassViewProps {
+const GRADE_COLORS: Record<string, string> = {
+  'Excelente':     'bg-emerald-600/90 border-emerald-500/50 text-white',
+  'Muy bien':      'bg-sky-600/90     border-sky-500/50     text-white',
+  'Muy bueno':     'bg-sky-600/90     border-sky-500/50     text-white',
+  'Bien':          'bg-indigo-600/90  border-indigo-500/50  text-white',
+  'Puede mejorar': 'bg-amber-600/90   border-amber-500/50   text-white',
+  'A mejorar':     'bg-amber-600/90   border-amber-500/50   text-white',
+  'puede mejorar': 'bg-amber-600/90   border-amber-500/50   text-white',
+};
+
+/* ── Types ────────────────────────────────────────────────────── */
+type Tab = 'content' | 'video' | 'slides' | 'activity';
+const TABS: { id: Tab; label: string; Icon: React.FC<{ className?: string }> }[] = [
+  { id: 'content',  label: 'Contenido',    Icon: BookOpen },
+  { id: 'video',    label: 'Video',        Icon: Video },
+  { id: 'slides',   label: 'Diapositivas', Icon: Presentation },
+  { id: 'activity', label: 'Actividad',    Icon: FilePenLine },
+];
+
+interface Props {
   user: User;
   classItem: ClassItem;
   submissions: ActivitySubmission[];
   onBack: () => void;
-  onSubmitActivity: (responseText: string) => void;
+  onSubmitActivity: (text: string) => void;
 }
 
-type TabType = 'content' | 'video' | 'slides' | 'activity';
-
-export default function ClassView({
-  user,
-  classItem,
-  submissions,
-  onBack,
-  onSubmitActivity
-}: ClassViewProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('content');
-  const [responseText, setResponseText] = useState('');
+/* ── ClassView ────────────────────────────────────────────────── */
+export default function ClassView({ user, classItem, submissions, onBack, onSubmitActivity }: Props) {
+  const [tab,           setTab]           = useState<Tab>('content');
+  const [response,      setResponse]      = useState('');
   const [justSubmitted, setJustSubmitted] = useState(false);
-  const [hasRecoveredDraft, setHasRecoveredDraft] = useState(false);
+  const [draftBanner,   setDraftBanner]   = useState(false);
 
-  // Buscar si ya tiene una entrega registrada para esta clase
-  const existingSubmission = submissions.find(
-    (sub) =>
-      sub.classLevel === classItem.level &&
-      sub.classWeek === classItem.week &&
-      sub.studentEmail === user.email
+  const existing  = submissions.find(s =>
+    s.classLevel === classItem.level &&
+    s.classWeek === classItem.week &&
+    (s.classModule === undefined || s.classModule === (classItem.module ?? 1)) &&
+    s.studentEmail === user.email
   );
+  const draftKey  = `draft_${user.email}_${classItem.level}_${classItem.week}`;
+  const now       = new Date();
+  const overdue   = !!(classItem.deadline && now > new Date(classItem.deadline));
+  const course    = COURSES.find(c => c.id === classItem.level);
+  const wordCount = response.trim() ? response.trim().split(/\s+/).length : 0;
+  const gradeCls  = existing?.grade ? (GRADE_COLORS[existing.grade] ?? 'bg-violet-600/90 border-violet-500/50 text-white') : '';
 
-  const draftKey = `draft_${user.email}_${classItem.level}_${classItem.week}`;
-
-  // Restore draft when component loads or level/week changes
   useEffect(() => {
-    if (existingSubmission) {
-      setResponseText('');
-      setHasRecoveredDraft(false);
-      return;
-    }
-    
-    const savedDraft = localStorage.getItem(draftKey);
-    if (savedDraft) {
-      setResponseText(savedDraft);
-      setHasRecoveredDraft(true);
-    } else {
-      setResponseText('');
-      setHasRecoveredDraft(false);
-    }
-  }, [classItem.level, classItem.week, user.email, existingSubmission, draftKey]);
+    if (existing) { setResponse(''); setDraftBanner(false); return; }
+    const saved = localStorage.getItem(draftKey);
+    if (saved) { setResponse(saved); setDraftBanner(true); }
+    else { setResponse(''); setDraftBanner(false); }
+  }, [classItem.level, classItem.week, user.email, existing, draftKey]);
 
-  // Handle user writing text inside textarea
-  const handleResponseChange = (text: string) => {
-    setResponseText(text);
-    if (text.trim()) {
-      localStorage.setItem(draftKey, text);
-    } else {
-      localStorage.removeItem(draftKey);
-    }
+  const onType = (text: string) => {
+    setResponse(text);
+    if (text.trim()) localStorage.setItem(draftKey, text);
+    else localStorage.removeItem(draftKey);
   };
-
-  const now = new Date();
-  const isPastDeadline = classItem.deadline && now > new Date(classItem.deadline);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!responseText.trim()) {
-      alert('Por favor, escribe una respuesta para tu actividad antes de entregar.');
-      return;
-    }
-    onSubmitActivity(responseText);
+    if (!response.trim() || overdue) return;
+    onSubmitActivity(response);
     setJustSubmitted(true);
-    
-    // Clear draft on successful submission
     localStorage.removeItem(draftKey);
-    setHasRecoveredDraft(false);
+    setDraftBanner(false);
   };
 
-  const formatDate = (dateString: string) => {
-    if (!dateString) return 'Sin fecha límite';
-    const d = new Date(dateString);
-    return d.toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
+  const fmt = (d: string) => !d ? '—' : new Date(d).toLocaleDateString('es-AR', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8">
-      {/* Back to dashboard button */}
-      <button
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+
+      {/* Back */}
+      <motion.button
         type="button"
         onClick={onBack}
-        className="flex items-center gap-1.5 group text-gray-500 hover:text-white light:text-neutral-500 light:hover:text-neutral-800 mb-6 text-xs font-medium transition-colors cursor-pointer"
+        whileHover={{ x: -2 }}
+        className="flex items-center gap-1.5 text-slate-500 hover:text-white light:hover:text-slate-800 text-[12px] font-semibold mb-7 transition-colors cursor-pointer group"
       >
         <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-        <span>Volver</span>
-      </button>
+        <span>Volver al dashboard</span>
+      </motion.button>
 
-      {/* Class header badge and titles */}
-      <div className="mb-8 border-b border-white/5 light:border-neutral-200 pb-5">
-        <span className="text-[9px] font-bold uppercase tracking-widest text-violet-400 light:text-violet-600 font-mono">
-          Semana {classItem.week} · Nivel {classItem.level}
-        </span>
-        <h1 className="font-sans text-xl sm:text-2xl font-semibold tracking-tight text-white light:text-neutral-950 mt-1">
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="mb-8 space-y-2"
+      >
+        <div className="flex items-center gap-2 text-[11px] font-mono">
+          <span className="text-violet-400 light:text-violet-600 font-bold uppercase tracking-wider bg-violet-500/8 light:bg-violet-50 border border-violet-500/14 light:border-violet-200 px-2.5 py-1 rounded-lg">
+            Semana {classItem.week}
+          </span>
+          <ChevronRight className="w-3 h-3 text-slate-600" />
+          <span className="text-slate-500 uppercase tracking-wider">
+            {course?.name ?? `Nivel ${classItem.level}`}
+          </span>
+        </div>
+
+        <h1 className="font-display text-2xl sm:text-3xl font-bold text-white light:text-slate-900 tracking-tight leading-tight">
           {classItem.title}
         </h1>
-      </div>
 
-      {/* Tabs Menu Navigation (Pill styled with fluid slide animation) */}
-      <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 mb-8 overflow-x-auto no-scrollbar scroll-smooth self-start max-w-max relative z-10 shadow-lg gap-1">
-        {(
-          [
-            { id: 'content', label: 'Contenido' },
-            { id: 'video', label: 'Video' },
-            { id: 'slides', label: 'Diapositivas' },
-            { id: 'activity', label: 'Actividad' },
-          ] as const
-        ).map((tab) => {
-          const isActive = activeTab === tab.id;
+        {course && (
+          <div className={`h-[2px] w-10 rounded-full bg-gradient-to-r ${course.accent}`} />
+        )}
+      </motion.div>
 
+      {/* Tabs */}
+      <div className="flex bg-white/[0.04] light:bg-slate-100 p-1 rounded-2xl border border-white/[0.06] light:border-slate-200 mb-8 overflow-x-auto no-scrollbar gap-0.5 w-fit shadow-sm">
+        {TABS.map(({ id, label, Icon }) => {
+          const active = tab === id;
           return (
             <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`relative flex items-center px-4.5 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
-                isActive
-                  ? 'text-white'
-                  : 'text-gray-400 light:text-neutral-500 hover:text-gray-200 light:hover:text-neutral-800'
+              key={id}
+              type="button"
+              onClick={() => setTab(id)}
+              className={`relative flex items-center gap-2 px-4 py-2.5 text-[12px] font-semibold rounded-xl whitespace-nowrap transition-all duration-250 cursor-pointer ${
+                active ? 'text-white' : 'text-slate-400 light:text-slate-500 hover:text-slate-200 light:hover:text-slate-700'
               }`}
             >
-              {isActive && (
+              {active && (
                 <motion.div
-                  layoutId="activeStudentTabPill"
-                  className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-950/40 rounded-xl -z-10"
-                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  layoutId="classTabPill"
+                  className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 shadow-lg shadow-violet-900/30 rounded-xl -z-10"
+                  transition={{ type: 'spring', stiffness: 420, damping: 30 }}
                 />
               )}
-              <span className="relative z-10">{tab.label}</span>
+              <Icon className={`w-3.5 h-3.5 relative z-10 ${active ? 'opacity-100' : 'opacity-55'}`} />
+              <span className="relative z-10">{label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Tabs content containers with transitions */}
+      {/* Tab content */}
       <div className="min-h-[300px]">
-        {activeTab === 'content' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="prose prose-invert light:prose-neutral max-w-none text-gray-300 light:text-neutral-800 leading-relaxed space-y-4"
-          >
-            {/* Renderizado de HTML dinámico in-line de forma segura */}
-            <div
+        <AnimatePresence mode="wait">
+
+          {tab === 'content' && (
+            <motion.div
+              key="content"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
               className="class-body-html"
-              dangerouslySetInnerHTML={{ __html: classItem.text }}
+              dangerouslySetInnerHTML={{ __html: sanitizeHtml(classItem.text) }}
             />
-          </motion.div>
-        )}
+          )}
 
-        {activeTab === 'video' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
-            className="w-full"
-          >
-            {classItem.videoId ? (
-              <div className="relative aspect-video rounded-2xl border border-white/5 light:border-neutral-200 overflow-hidden bg-black/40 light:bg-neutral-50">
-                <iframe
-                  title="Youtube embed code"
-                  src={`https://www.youtube.com/embed/${classItem.videoId}`}
-                  allowFullScreen
-                  className="absolute top-0 left-0 w-full h-full border-0"
-                />
-              </div>
-            ) : (
-              <div className="aspect-video rounded-2xl border border-white/5 light:border-neutral-200/80 flex flex-col items-center justify-center text-center p-6 bg-neutral-950/40 light:bg-neutral-50">
-                <div className="w-10 h-10 rounded-xl bg-violet-600/10 flex items-center justify-center text-violet-400 light:text-violet-600 mb-3 animate-pulse">
-                  <Video className="w-4 h-4" />
+          {tab === 'video' && (
+            <motion.div key="video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}>
+              {classItem.videoId ? (
+                <div className="relative aspect-video rounded-2xl border border-white/[0.07] light:border-slate-200 overflow-hidden bg-black/50 shadow-2xl shadow-black/40">
+                  <iframe
+                    title="Video de la clase"
+                    src={`https://www.youtube.com/embed/${classItem.videoId}`}
+                    allowFullScreen
+                    className="absolute inset-0 w-full h-full border-0"
+                  />
                 </div>
-                <h3 className="font-sans font-semibold text-white light:text-neutral-800 text-sm mb-1">
-                  Video en producción
-                </h3>
-                <p className="text-gray-500 light:text-neutral-500 text-xs max-w-xs">
-                  El tutor publicará la grabación semanal próximamente.
-                </p>
-              </div>
-            )}
-          </motion.div>
-        )}
+              ) : (
+                <EmptyState icon={<Video className="w-5 h-5" />} title="Video en producción" desc="El tutor publicará la grabación pronto." accent="violet" />
+              )}
+            </motion.div>
+          )}
 
-        {activeTab === 'slides' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.3 }}
-            className="w-full"
-          >
-            {classItem.slidesUrl ? (
-              <div className="rounded-2xl border border-white/5 light:border-neutral-300 overflow-hidden bg-[#070714] light:bg-[#fbfbfb] shadow-xl relative">
-                <iframe
-                  title="Presentación de la clase"
-                  src={getEmbedUrl(classItem.slidesUrl)}
-                  className="w-full h-[320px] sm:h-[480px] border-0"
-                  allow="fullscreen"
-                  allowFullScreen
-                />
-              </div>
-            ) : (
-              <div className="h-[300px] rounded-2xl border border-white/5 light:border-neutral-200/80 flex flex-col items-center justify-center text-center p-6 bg-neutral-950/40 light:bg-neutral-50">
-                <div className="w-10 h-10 rounded-xl bg-indigo-600/10 flex items-center justify-center text-indigo-400 light:text-indigo-600 mb-3">
-                  <Presentation className="w-4 h-4" />
+          {tab === 'slides' && (
+            <motion.div key="slides" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}>
+              {classItem.slidesUrl ? (
+                <div className="rounded-2xl border border-white/[0.07] light:border-slate-200 overflow-hidden shadow-xl">
+                  <iframe
+                    title="Presentación de la clase"
+                    src={getEmbedUrl(classItem.slidesUrl)}
+                    className="w-full h-[320px] sm:h-[480px] border-0"
+                    allow="fullscreen"
+                    allowFullScreen
+                  />
                 </div>
-                <h3 className="font-sans font-semibold text-white light:text-neutral-800 text-sm mb-1">
-                  Diapositivas próximamente
-                </h3>
-                <p className="text-gray-500 light:text-neutral-500 text-xs max-w-xs">
-                  No se ha vinculado una presentación para esta sesión.
-                </p>
-              </div>
-            )}
-          </motion.div>
-        )}
+              ) : (
+                <EmptyState icon={<Presentation className="w-5 h-5" />} title="Diapositivas próximamente" desc="No se ha vinculado una presentación para esta sesión." accent="indigo" />
+              )}
+            </motion.div>
+          )}
 
-        {activeTab === 'activity' && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="bg-violet-950/10 border border-violet-900/40 light:bg-violet-50/40 light:border-violet-200/60 rounded-3xl p-6 sm:p-8"
-          >
-            <span className="text-[10px] uppercase font-bold tracking-widest text-violet-400 light:text-violet-600">
-              Entrega Obligatoria semanal
-            </span>
-            <h3 className="font-display text-lg sm:text-xl font-bold text-white light:text-neutral-900 mt-1 mb-3">
-              {classItem.actTitle || 'Actividad práctica'}
-            </h3>
-            <p className="text-gray-400 light:text-neutral-700 text-sm leading-relaxed mb-6">
-              {classItem.actDesc || 'Escribe tu ensayo y propuesta para la clase correspondiente.'}
-            </p>
+          {tab === 'activity' && (
+            <motion.div
+              key="activity"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              className="space-y-5"
+            >
+              {/* Activity header */}
+              <div className="surface rounded-2xl p-6 space-y-3">
+                <div>
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-violet-400 light:text-violet-600">
+                    Entrega semanal
+                  </span>
+                  <h3 className="font-display text-lg sm:text-xl font-bold text-white light:text-slate-900 mt-1 leading-tight">
+                    {classItem.actTitle || 'Actividad práctica'}
+                  </h3>
+                  <p className="text-[13px] text-slate-400 light:text-slate-500 mt-2 leading-relaxed">
+                    {classItem.actDesc || 'Escribí tu respuesta para la consigna de esta clase.'}
+                  </p>
+                </div>
 
-            {/* Deadline information info card */}
-            {classItem.deadline && (
-              <div className={`flex items-center gap-2 text-xs font-semibold p-3.5 rounded-xl border mb-6 ${
-                isPastDeadline
-                  ? 'bg-red-950/14 border-red-500/25 text-red-300 light:bg-red-50 light:border-red-200/70 light:text-red-700'
-                  : 'bg-yellow-950/14 border-yellow-500/25 text-yellow-300 light:bg-amber-50 light:border-amber-200/70 light:text-amber-800'
-              }`}>
-                {isPastDeadline ? (
-                  <>
-                    <Clock className="w-4 h-4 shrink-0" />
-                    <span>Lamentablemente se cerró el plazo el {formatDate(classItem.deadline)}</span>
-                  </>
-                ) : (
-                  <>
-                    <CalendarDays className="w-4 h-4 shrink-0" />
-                    <span>Plazo de entrega válido hasta: {formatDate(classItem.deadline)}</span>
-                  </>
+                {/* Deadline badge */}
+                {classItem.deadline && (
+                  <div className={`flex items-center gap-2.5 text-[12px] font-semibold px-3.5 py-2.5 rounded-xl border w-fit ${
+                    overdue
+                      ? 'bg-rose-500/[0.07] border-rose-500/15 text-rose-400 light:text-rose-600'
+                      : 'bg-amber-500/[0.07] border-amber-500/15 text-amber-400 light:text-amber-600'
+                  }`}>
+                    {overdue
+                      ? <><Clock className="w-3.5 h-3.5 shrink-0" /><span>Plazo cerrado · {fmt(classItem.deadline)}</span></>
+                      : <><CalendarDays className="w-3.5 h-3.5 shrink-0" /><span>Entrega hasta el {fmt(classItem.deadline)}</span></>
+                    }
+                  </div>
                 )}
               </div>
-            )}
 
-            {existingSubmission || justSubmitted ? (
-              <div className="relative overflow-hidden bg-green-950/15 border border-green-500/30 light:bg-green-50/40 light:border-green-200 rounded-3xl p-6 text-center space-y-3">
-                {justSubmitted && <ConfettiSower />}
-                <div className="w-12 h-12 bg-green-500/15 text-green-400 flex items-center justify-center rounded-full mx-auto animate-bounce-slow relative z-10">
-                  <CheckCircle2 className="w-6 h-6" />
-                </div>
-                <h4 className="text-white light:text-green-800 text-base font-bold relative z-10">
-                  ¡Actividad Entregada con éxito!
-                </h4>
-                <p className="text-gray-400 light:text-green-700 text-xs max-w-md mx-auto relative z-10">
-                  Tu respuesta fue recibida correctamente por el tutor. Abajo podés visualizar tu entrega guardada:
-                </p>
-                <div className="bg-black/25 light:bg-neutral-100 text-left p-4 rounded-xl text-gray-300 light:text-neutral-800 text-xs font-mono border border-[#22c55e]/20 light:border-green-200 max-h-40 overflow-y-auto whitespace-pre-wrap relative z-10">
-                  {existingSubmission?.responseText || responseText}
-                </div>
+              {/* Submitted state */}
+              {existing || justSubmitted ? (
+                <div className="relative surface rounded-2xl p-6 space-y-5 overflow-hidden border-emerald-500/[0.12] light:border-emerald-200/60"
+                  style={{ borderColor: 'rgba(16,185,129,0.12)' }}>
+                  {justSubmitted && <Confetti />}
 
-                {existingSubmission?.grade && (
-                  <div className="mt-6 border-t border-white/5 light:border-neutral-200 pt-5 text-left space-y-3 relative z-10">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-violet-400 light:text-violet-600 block font-mono">
-                        Corrección del Docente
-                      </span>
-                      <span className={`inline-block px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full border ${
-                        existingSubmission.grade === 'Muy bien'
-                          ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400 light:bg-emerald-50 light:border-emerald-200 light:text-emerald-700'
-                          : existingSubmission.grade === 'Bien'
-                          ? 'bg-indigo-950/30 border-indigo-500/30 text-indigo-400 light:bg-indigo-50 light:border-indigo-200 light:text-indigo-700'
-                          : 'bg-amber-950/30 border-amber-500/30 text-amber-400 light:bg-amber-50 light:border-amber-200 light:text-amber-700'
-                      }`}>
-                        {existingSubmission.grade}
-                      </span>
+                  {/* Success header */}
+                  <div className="flex flex-col items-center text-center gap-3 relative z-10">
+                    <div className="w-14 h-14 rounded-full bg-emerald-500/12 border border-emerald-500/20 flex items-center justify-center animate-bounce-slow">
+                      <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                     </div>
+                    <div>
+                      <h4 className="font-display font-bold text-base text-white light:text-slate-900">¡Actividad entregada!</h4>
+                      <p className="text-[12px] text-slate-400 mt-0.5">Tu respuesta fue recibida. El tutor la revisará pronto.</p>
+                    </div>
+                  </div>
 
-                    {existingSubmission.feedback && (
-                      <div className="p-4 bg-violet-950/10 light:bg-violet-50/50 border border-violet-900/10 light:border-violet-100/50 rounded-xl">
-                        <p className="text-gray-300 light:text-neutral-700 text-xs sm:text-sm italic leading-relaxed">
-                          "{existingSubmission.feedback}"
-                        </p>
-                        {existingSubmission.correctedAt && (
-                          <span className="text-[9px] text-gray-500 block mt-2 text-right">
-                            Corregido el {new Date(existingSubmission.correctedAt).toLocaleDateString('es-AR')}
+                  {/* Response preview */}
+                  <div className="bg-white/[0.03] light:bg-slate-50 border border-white/[0.06] light:border-slate-200 rounded-xl p-4 text-[12px] text-slate-300 light:text-slate-700 font-mono leading-relaxed max-h-36 overflow-y-auto whitespace-pre-wrap relative z-10">
+                    {existing?.responseText || response}
+                  </div>
+
+                  {/* Grade */}
+                  {existing?.grade && (
+                    <div className="border-t border-white/[0.06] light:border-slate-100 pt-4 space-y-3 relative z-10">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-500">
+                          Corrección del docente
+                        </span>
+                        <span className={`px-3 py-1 text-[11px] font-bold rounded-lg border ${gradeCls}`}>
+                          {existing.grade}
+                        </span>
+                      </div>
+                      {existing.feedback && (
+                        <div className="p-4 bg-violet-500/[0.05] border border-violet-500/[0.1] rounded-xl">
+                          <p className="text-[13px] text-slate-300 light:text-slate-600 italic leading-relaxed">
+                            "{existing.feedback}"
+                          </p>
+                          {existing.correctedAt && (
+                            <span className="text-[10px] text-slate-500 block mt-2 text-right font-mono">
+                              {new Date(existing.correctedAt).toLocaleDateString('es-AR')}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Form */
+                <form onSubmit={handleSubmit} className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-[11px] font-bold uppercase tracking-widest text-slate-500 font-mono">
+                        Tu respuesta
+                      </label>
+                      <div className="flex items-center gap-2">
+                        {draftBanner && (
+                          <motion.span
+                            initial={{ opacity: 0, scale: 0.9 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="text-[10px] text-emerald-400 flex items-center gap-1 bg-emerald-500/8 border border-emerald-500/14 px-2 py-0.5 rounded-lg"
+                          >
+                            <History className="w-2.5 h-2.5" /> Borrador recuperado
+                          </motion.span>
+                        )}
+                        {response && (
+                          <span className="text-[10px] text-slate-600 font-mono">
+                            {wordCount} {wordCount === 1 ? 'palabra' : 'palabras'}
                           </span>
                         )}
                       </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center gap-2">
-                    <label htmlFor="actText" className="text-xs text-gray-400 light:text-neutral-500 font-bold uppercase tracking-wider block">
-                      Tu respuesta o conclusión
-                    </label>
-                    {hasRecoveredDraft && (
-                      <motion.span 
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="text-[10px] text-green-400 font-medium flex items-center gap-1 font-sans bg-green-500/10 px-2 py-0.5 rounded-lg border border-green-500/20"
+                    </div>
+                    <textarea
+                      disabled={overdue}
+                      value={response}
+                      onChange={e => onType(e.target.value)}
+                      placeholder="Escribí tu reflexión, análisis o respuesta a la consigna…"
+                      className="w-full min-h-[180px] bg-white/[0.03] light:bg-white border border-white/[0.07] light:border-slate-200 rounded-2xl p-4 text-[13px] text-white light:text-slate-800 placeholder-slate-600 light:placeholder-slate-400 font-sans focus:border-violet-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed resize-none leading-relaxed"
+                    />
+                    <div className="flex justify-between items-center">
+                      <span className="text-[10px] text-slate-600 font-mono">
+                        {response.length > 0 ? `${response.length} caracteres` : ''}
+                      </span>
+                      <button
+                        type="submit"
+                        disabled={overdue || !response.trim()}
+                        className="liquid-glass-btn px-6 py-2.5 text-[13px]"
                       >
-                        <History className="w-3 h-3 text-green-400" />
-                        Borrador recuperado localmente
-                      </motion.span>
-                    )}
+                        Entregar actividad →
+                      </button>
+                    </div>
                   </div>
-                  <textarea
-                    id="actText"
-                    disabled={isPastDeadline}
-                    value={responseText}
-                    onChange={(e) => handleResponseChange(e.target.value)}
-                    placeholder="Escribí los detalles conscientes de tus decisiones o la consigna solicitada aquí..."
-                    className="w-full min-h-[160px] bg-black/20 border border-white/10 light:bg-white light:border-neutral-300 rounded-2xl p-4 text-white light:text-neutral-800 placeholder-gray-500 light:placeholder-neutral-400 font-sans text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                  />
-                </div>
-
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    disabled={isPastDeadline || !responseText.trim()}
-                    className="liquid-glass-btn py-3 px-6 text-sm font-bold"
-                  >
-                    Entregar actividad →
-                  </button>
-                </div>
-              </form>
-            )}
-          </motion.div>
-        )}
+                </form>
+              )}
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+    </div>
+  );
+}
+
+/* ── Empty State ──────────────────────────────────────────────── */
+function EmptyState({ icon, title, desc, accent }: { icon: React.ReactNode; title: string; desc: string; accent: string }) {
+  const cls = accent === 'indigo'
+    ? 'bg-indigo-500/8 text-indigo-400 light:text-indigo-600'
+    : 'bg-violet-500/8 text-violet-400 light:text-violet-600';
+  return (
+    <div className="h-[260px] rounded-2xl border border-white/[0.06] light:border-slate-200 flex flex-col items-center justify-center text-center p-8 surface-subtle">
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-4 ${cls}`}>
+        {icon}
+      </div>
+      <h3 className="font-semibold text-[13px] text-white light:text-slate-800 mb-1.5">{title}</h3>
+      <p className="text-[12px] text-slate-500 max-w-xs leading-relaxed">{desc}</p>
     </div>
   );
 }
