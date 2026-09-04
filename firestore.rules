@@ -1,65 +1,102 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Global safety net catch-all: Deny all reads/writes by default
+
+    // Todo prohibido salvo lo que se habilite explícitamente más abajo.
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Main Helper Functions
+    // ── Ayudantes ────────────────────────────────────────────────
+
     function isSignedIn() {
       return request.auth != null && request.auth.token != null;
     }
-    
+
     function emailOf(auth) {
       return auth.token.email == null ? "" : auth.token.email.lower();
     }
-    
+
+    function existeUsuario() {
+      return isSignedIn() && emailOf(request.auth) != "" &&
+             exists(/databases/$(database)/documents/users/$(emailOf(request.auth)));
+    }
+
+    function datosUsuario() {
+      return get(/databases/$(database)/documents/users/$(emailOf(request.auth))).data;
+    }
+
     function getUserData(email) {
       return get(/databases/$(database)/documents/users/$(email)).data;
     }
-    
+
     function isUserRole(email, role) {
-      return exists(/databases/$(database)/documents/users/$(email)) && 
+      return exists(/databases/$(database)/documents/users/$(email)) &&
              getUserData(email).role == role;
     }
-    
-    function isStaff() {
-      return isSignedIn() && 
-             emailOf(request.auth) != "" &&
+
+    // Dueños del producto: acceso total, aunque su documento todavía no exista.
+    function esPropietario() {
+      return isSignedIn() &&
              (emailOf(request.auth) == "fintlyeducacion@gmail.com" ||
-              emailOf(request.auth) == "fargenti01@gmail.com" ||
-              isUserRole(emailOf(request.auth), 'admin') ||
-              isUserRole(emailOf(request.auth), 'directivo'));
+              emailOf(request.auth) == "fargenti01@gmail.com");
     }
-    
+
+    function esAdmin() {
+      return esPropietario() || (isSignedIn() && isUserRole(emailOf(request.auth), 'admin'));
+    }
+
+    function isStaff() {
+      return esAdmin() || (isSignedIn() && isUserRole(emailOf(request.auth), 'directivo'));
+    }
+
+    /**
+     * Cuenta habilitada: existe en 'users' y ya fue aprobada.
+     * Deja afuera a los 'pausado', que antes podían leer todo el contenido.
+     */
+    function esAprobado() {
+      return existeUsuario() && datosUsuario().role in ['alumno', 'directivo', 'admin'];
+    }
+
+    function colegioPropio() {
+      return datosUsuario().school;
+    }
+
     function isOwner(email) {
       return isSignedIn() && emailOf(request.auth) != "" && emailOf(request.auth) == email.lower();
     }
 
-    // 1. Connection Test Collection
+    // ── 1. Prueba de conexión ────────────────────────────────────
     match /test/{documentId} {
-      allow read: if true;
+      allow read: if isSignedIn();
     }
 
-    // 2. Users Collection
+    // ── 2. Usuarios ──────────────────────────────────────────────
     match /users/{email} {
       allow read: if isSignedIn() && (isOwner(email) || isStaff());
-      allow create: if (isSignedIn() && isOwner(email) && 
-                    (request.resource.data.role in ['alumno', 'pausado'] || 
+      allow create: if (isSignedIn() && isOwner(email) &&
+                    (request.resource.data.role in ['alumno', 'pausado'] ||
                      (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'))) || isStaff();
-      allow update: if (isOwner(email) && (request.resource.data.role == resource.data.role || (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'))) || isStaff();
+      allow update: if (isOwner(email) && (request.resource.data.role == resource.data.role ||
+                    (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'))) || isStaff();
       allow delete: if isStaff();
     }
 
-    // 3. Classes Collection
+    // ── 3. Clases ────────────────────────────────────────────────
+    //
+    // Antes: "allow read: if isSignedIn()". Cualquiera con una cuenta de Google
+    // podía leer el curso completo, incluso sin estar aprobado todavía.
+    //
+    // Ahora el admin ve toda la biblioteca, y el resto solo las clases
+    // publicadas a SU colegio. Las plantillas del syllabus no tienen campo
+    // 'school', así que quedan reservadas al admin automáticamente.
     match /classes/{classId} {
-      allow read: if isSignedIn();
+      allow read: if esAdmin() ||
+                     (esAprobado() && resource.data.school == colegioPropio());
       allow write: if isStaff();
     }
 
-    // 4. Students Collection
+    // ── 4. Alumnos ───────────────────────────────────────────────
     match /students/{studentId} {
       allow read: if isStaff() || (isSignedIn() && (resource == null || resource.data.email.lower() == emailOf(request.auth)));
       allow create: if isStaff() || (isSignedIn() && request.resource.data.email.lower() == emailOf(request.auth));
@@ -67,16 +104,33 @@ service cloud.firestore {
       allow delete: if isStaff();
     }
 
-    // 5. Submissions Collection
+    // ── 5. Entregas ──────────────────────────────────────────────
+    //
+    // El alumno puede crear y editar su entrega mientras NO esté corregida.
+    // Una vez que tiene nota queda congelada: antes podía reescribir el texto
+    // después de recibir la devolución, dejando una nota que no correspondía
+    // a lo que el docente había leído.
     match /submissions/{submissionId} {
       allow get: if isStaff() || (isSignedIn() && (resource == null || resource.data.studentEmail.lower() == emailOf(request.auth)));
       allow list: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth));
-      allow create: if isStaff() || (isSignedIn() && request.resource.data.studentEmail.lower() == emailOf(request.auth) && !request.resource.data.keys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']));
-      allow update: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']));
+
+      allow create: if isStaff() ||
+                    (isSignedIn() &&
+                     request.resource.data.studentEmail.lower() == emailOf(request.auth) &&
+                     !request.resource.data.keys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']) &&
+                     request.resource.data.responseText.size() <= 20000);
+
+      allow update: if isStaff() ||
+                    (isSignedIn() &&
+                     resource.data.studentEmail.lower() == emailOf(request.auth) &&
+                     !('grade' in resource.data) &&
+                     !request.resource.data.diff(resource.data).affectedKeys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']) &&
+                     request.resource.data.responseText.size() <= 20000);
+
       allow delete: if isStaff();
     }
 
-    // 6. Mail (Trigger Email Extension) Collection
+    // ── 6. Cola de correos ───────────────────────────────────────
     match /mail/{mailId} {
       allow read: if isStaff();
       allow create: if isStaff();

@@ -62,7 +62,7 @@ export default function Navbar({ user, onLogout, onNavigateHome, theme, onToggle
             onClick={onNavigateHome}
             whileTap={{ scale: 0.95 }}
             title="Ir al inicio"
-            className="group flex items-center cursor-pointer select-none shrink-0 pl-1"
+            className="group flex items-center cursor-pointer select-none shrink-0 pl-1 py-2 -my-2"
           >
             <span className="relative flex items-center h-[28px] rounded-[9px] bg-gradient-to-br from-violet-600 via-indigo-600 to-sky-500 shadow-lg shadow-violet-950/50 light:shadow-violet-300/50 overflow-hidden px-[8px] transition-shadow duration-300 group-hover:shadow-violet-800/60">
               <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
@@ -89,7 +89,7 @@ export default function Navbar({ user, onLogout, onNavigateHome, theme, onToggle
             whileTap={{ scale: 0.9 }}
             title={theme === 'light' ? 'Modo oscuro' : 'Modo claro'}
             aria-label={theme === 'light' ? 'Activar modo oscuro' : 'Activar modo claro'}
-            className="w-9 h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-white light:text-slate-500 light:hover:text-slate-800 hover:bg-white/[0.07] light:hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
+            className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl text-slate-400 hover:text-white light:text-slate-500 light:hover:text-slate-800 hover:bg-white/[0.07] light:hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
           >
             <motion.span
               key={theme}
@@ -132,7 +132,7 @@ export default function Navbar({ user, onLogout, onNavigateHome, theme, onToggle
             onClick={onLogout}
             title="Cerrar sesión"
             aria-label="Cerrar sesión"
-            className="flex items-center gap-1.5 h-9 px-2.5 rounded-xl text-slate-400 hover:text-rose-400 light:text-slate-500 light:hover:text-rose-500 hover:bg-rose-500/[0.08] transition-colors text-xs font-semibold cursor-pointer"
+            className="flex items-center gap-1.5 h-10 sm:h-9 px-3 sm:px-2.5 rounded-xl text-slate-400 hover:text-rose-400 light:text-slate-500 light:hover:text-rose-500 hover:bg-rose-500/[0.08] transition-colors text-xs font-semibold cursor-pointer"
           >
             <LogOut className="w-[15px] h-[15px] shrink-0" />
             <span className="hidden sm:block">Salir</span>

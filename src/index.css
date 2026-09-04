@@ -78,6 +78,30 @@ button:focus-visible, a:focus-visible {
   outline-offset: 2px;
 }
 
+/* ── Celular ──────────────────────────────────────────────────────── */
+/*
+ * Safari en iOS hace zoom automático al enfocar un campo cuya letra mide
+ * menos de 16px, y deja la página descuadrada y con scroll horizontal.
+ * Forzamos 16px en pantallas táctiles chicas: no cambia nada en escritorio.
+ */
+@media (max-width: 640px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
+/* Nada debe provocar scroll horizontal de la página */
+html, body { max-width: 100%; overflow-x: hidden; }
+
+/* Respetar a quien pidió menos movimiento en su sistema */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* ── Animations ───────────────────────────────────────────────────── */
 @keyframes fade-up {
   from { opacity: 0; transform: translateY(14px); }

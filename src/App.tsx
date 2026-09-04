@@ -6,7 +6,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { DEFAULT_CLASSES, ASSOCIATED_SCHOOLS, SIN_ASIGNAR, COLEGIO_INTERNO } from './data';
+import { ASSOCIATED_SCHOOLS, SIN_ASIGNAR, COLEGIO_INTERNO } from './data';
 import { ClassItem, User, Student, ActivitySubmission } from './types';
 
 // Componentes modulares
@@ -45,22 +45,12 @@ import { Clock } from 'lucide-react';
 const DEV_BYPASS_USER: User | null = null;
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEMO_EMAILS_TO_DELETE = [
-  'sofia@faro.edu.ar',
-  'lucas@faro.edu.ar',
-  'mateo@faro.edu.ar',
-  'alumno@fintly.pro',
-  'tomas@fintly.pro',
-  'camila@fintly.pro',
-  'vale@fintly.pro',
-  'nacho@fintly.pro',
-  'santiago@fintly.pro',
-  'felipe@fintly.pro',
-  'benja@southgreek.edu',
-  'delfi@southgreek.edu',
-  'emma@globalschool.edu',
-  'nico@globalschool.edu'
-];
+// Nota: se eliminó la lista DEMO_EMAILS_TO_DELETE.
+// Ocultaba ciertos correos de las listas del panel, lo que hacía que un usuario
+// pudiera existir en la base y no aparecer en la interfaz. En un panel de
+// administración eso es peor que ver un registro de prueba de más: si sobra
+// algún dato viejo, se borra a propósito desde la consola de Firebase.
+
 
 export default function App() {
   // NUNCA hidratamos el usuario desde localStorage: ese dato lo puede escribir
@@ -312,45 +302,59 @@ export default function App() {
   useEffect(() => {
     if (!currentUser || !authInitialized) return;
 
-    const classesRef = collection(db, 'classes');
-    const unsubscribe = onSnapshot(classesRef, (snapshot) => {
+    // Una cuenta pendiente de aprobación no accede al contenido.
+    if (currentUser.role === 'pausado') {
+      setClasses([]);
+      return;
+    }
+
+    /**
+     * Cada rol pide SOLO lo que necesita. Antes se leía la colección entera:
+     * con 128 clases publicadas a 6 colegios son ~900 documentos que bajaba
+     * hasta un alumno que solo usa 32 de ellos.
+     *
+     * Las clases del syllabus no tienen campo 'school', así que filtrar por
+     * colegio ya las excluye sin necesidad de otra condición.
+     */
+    let classesQuery;
+
+    if (currentUser.role === 'admin') {
+      // El admin administra la biblioteca completa y todas las publicaciones.
+      classesQuery = collection(db, 'classes');
+    } else if (currentUser.role === 'directivo') {
+      if (!currentUser.school) { setClasses([]); return; }
+      classesQuery = query(
+        collection(db, 'classes'),
+        where('school', '==', currentUser.school)
+      );
+    } else {
+      // Alumno: su colegio y su nivel.
+      if (!currentUser.school) { setClasses([]); return; }
+      classesQuery = query(
+        collection(db, 'classes'),
+        where('school', '==', currentUser.school),
+        where('level', '==', currentUser.level ?? 0)
+      );
+    }
+
+    const unsubscribe = onSnapshot(classesQuery, (snapshot) => {
       let loadedClasses: ClassItem[] = [];
       snapshot.forEach((doc) => {
         loadedClasses.push({ id: doc.id, ...doc.data() } as ClassItem);
       });
 
-      // Auto-sembrar base de clases si el panel está vacío y somos administradores
-      if (loadedClasses.length === 0 && currentUser.role === 'admin') {
-        const seedClasses = async () => {
-          try {
-            const initialSyllabus = DEFAULT_CLASSES.map(cl => ({ ...cl, isSyllabus: true }));
-            const initialAssigned: ClassItem[] = [];
-            ASSOCIATED_SCHOOLS.forEach(school => {
-              DEFAULT_CLASSES.forEach(cl => {
-                initialAssigned.push({
-                  ...cl,
-                  school,
-                  unlockAt: cl.unlockAt || "2026-01-01T00:00",
-                  deadline: cl.deadline || "2099-01-01T00:00"
-                });
-              });
-            });
-            const combined = [...initialSyllabus, ...initialAssigned];
-            
-            for (const cl of combined) {
-              const docId = cl.isSyllabus 
-                ? syllabusId(cl.level, cl.module, cl.week)
-                : assignedId(cl.school || '', cl.level, cl.module, cl.week);
-              await setDoc(doc(db, 'classes', docId), cl);
-            }
-          } catch (err) {
-            console.error("Could not seed database classes:", err);
-          }
-        };
-        seedClasses();
-      } else {
-        setClasses(loadedClasses);
-      }
+      // NO sembramos contenido automáticamente.
+      //
+      // Antes, si esta lectura venía vacía y había un admin conectado, la app
+      // publicaba las clases de ejemplo de DEFAULT_CLASSES a los seis colegios
+      // reales. Alcanzaba con un hipo de Firestore, un problema de permisos o
+      // un instante sin conexión para que apareciera contenido de muestra
+      // encima del contenido real de los alumnos.
+      //
+      // Una colección vacía ahora simplemente muestra el estado vacío, que ya
+      // está resuelto en la interfaz e invita a crear la primera clase.
+      setClasses(loadedClasses);
+
     }, (error) => {
       if (auth.currentUser?.email?.toLowerCase() !== currentUserRef.current?.email?.toLowerCase()) {
         console.warn("Ignored Firestore permission error during user transition phase:", error);
@@ -397,6 +401,59 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser, authInitialized]);
 
+  // --- 4A. ESCUCHAR EL PROPIO PERFIL EN VIVO ---
+  //
+  // El rol vive en 'users', y esa colección solo la escuchaban admin y directivos.
+  // El alumno leía su rol una única vez, al iniciar sesión. Consecuencia: alguien
+  // esperando en la pantalla de "Cuenta en revisión" se quedaba ahí para siempre
+  // aunque el admin lo aprobara, hasta que recargara la página por su cuenta.
+  //
+  // Con este listener, aprobar a un alumno lo hace entrar al instante. Y si le
+  // cambian el colegio o el nivel mientras usa la app, se actualiza solo.
+  useEffect(() => {
+    if (DEV_BYPASS_USER) return;
+    if (!currentUser?.email || !authInitialized) return;
+
+    const miEmail = currentUser.email.toLowerCase();
+    const miPerfilRef = doc(db, 'users', miEmail);
+
+    const unsubscribe = onSnapshot(
+      miPerfilRef,
+      (snap) => {
+        if (!snap.exists()) return;
+        const perfil = snap.data() as User;
+
+        const anterior = currentUserRef.current;
+        if (!anterior) return;
+
+        // Solo reaccionamos si cambió algo que importa
+        const cambio =
+          perfil.role !== anterior.role ||
+          perfil.school !== anterior.school ||
+          perfil.level !== anterior.level ||
+          perfil.name !== anterior.name;
+
+        if (!cambio) return;
+
+        setCurrentUser(perfil);
+        localStorage.setItem('fintly_logged_user', JSON.stringify(perfil));
+
+        // Si cambió el rol, hay que llevarlo a la pantalla que le corresponde
+        if (perfil.role !== anterior.role) {
+          if (perfil.role === 'admin') setCurrentView('admin');
+          else if (perfil.role === 'directivo') setCurrentView('progress');
+          else if (perfil.role === 'pausado') setCurrentView('pausado');
+          else setCurrentView('dashboard');
+        }
+      },
+      (error) => {
+        console.warn('No se pudo escuchar el perfil propio:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [currentUser?.email, authInitialized]);
+
   // --- 4B. ESCUCHAR UNIVERSAL DE USUARIOS PARA STAFF ---
   useEffect(() => {
     if (!currentUser || !authInitialized || (currentUser.role !== 'admin' && currentUser.role !== 'directivo')) {
@@ -412,10 +469,6 @@ export default function App() {
         const cleanEmail = u.email?.toLowerCase().trim();
         if (!cleanEmail) return;
 
-        // Ignorar localmente los correos de prueba eliminados
-        if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
-          return;
-        }
         
         // Corrección de visualización inmediata en memoria para consistencia
         if (u.role === 'admin') {
@@ -476,10 +529,6 @@ export default function App() {
         const cleanEmail = st.email?.toLowerCase().trim();
         if (!cleanEmail) return;
 
-        // Ignorar localmente los correos de prueba eliminados
-        if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail)) {
-          return;
-        }
 
         // Respetar el colegio asignado o marcarlo como pendiente si no tiene
         if (!st.school) {
@@ -504,61 +553,16 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser, authInitialized]);
 
-  // --- 5B. ONE-TIME DATABASE HEALING & CLEANUP (ASÍNCRONO Y DE BAJO IMPACTO) ---
-  useEffect(() => {
-    if (!currentUser || !authInitialized) return;
-    if (currentUser.role !== 'admin' && currentUser.role !== 'directivo') return;
-
-    const runDatabaseHealing = async () => {
-      try {
-        console.log("Healing DB: Deleting demo users...");
-        
-        // 1. Eliminar todos los alumnos/usuarios de prueba que estén en la base de datos
-        for (const email of DEMO_EMAILS_TO_DELETE) {
-          const studentDocId = email.replace(/[^a-zA-Z0-9_.-]/g, '_');
-          deleteDoc(doc(db, 'students', studentDocId)).catch(() => {});
-          deleteDoc(doc(db, 'users', email)).catch(() => {});
-        }
-
-        // 2. Limpiar usuarios corruptos o de demo en Firestore
-        const usersSnap = await getDocs(collection(db, 'users'));
-        for (const userDoc of usersSnap.docs) {
-          const u = userDoc.data() as User;
-          const cleanEmail = u.email?.toLowerCase().trim();
-          if (!cleanEmail) continue;
-
-          const userName = (u.name || '').toLowerCase().trim();
-          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail) || userName === 'asd') {
-            await deleteDoc(doc(db, 'users', cleanEmail)).catch(() => {});
-            const studentDocId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-            await deleteDoc(doc(db, 'students', studentDocId)).catch(() => {});
-            console.log(`[Heal] Deleted user named asd/demo: ${cleanEmail}`);
-            continue;
-          }
-        }
-
-        // 3. Limpiar alumnos corruptos de demo en Firestore
-        const studentsSnap = await getDocs(collection(db, 'students'));
-        for (const studentDoc of studentsSnap.docs) {
-          const st = studentDoc.data() as Student;
-          const cleanEmail = st.email?.toLowerCase().trim();
-          if (!cleanEmail) continue;
-
-          const studentName = (st.name || '').toLowerCase().trim();
-          if (DEMO_EMAILS_TO_DELETE.includes(cleanEmail) || studentName === 'asd') {
-            await deleteDoc(doc(db, 'students', studentDoc.id)).catch(() => {});
-            console.log(`[Heal] Deleted student record named asd/demo: ${cleanEmail}`);
-            continue;
-          }
-        }
-        console.log("Database healing completed!");
-      } catch (err) {
-        console.warn("Could not execute full database healing (possible read/write restriction):", err);
-      }
-    };
-
-    runDatabaseHealing();
-  }, [currentUser, authInitialized]);
+  // La rutina de "healing" automático fue eliminada.
+  //
+  // Se ejecutaba en cada login de admin o directivo y borraba, sin confirmación
+  // y sin vuelta atrás, cualquier usuario o alumno cuyo nombre fuera "asd" o
+  // cuyo correo estuviera en una lista fija dentro del código.
+  //
+  // Servía para limpiar datos de prueba durante el desarrollo. En una app usada
+  // por colegios, borrar registros de alumnos de forma automática y silenciosa
+  // es un riesgo que no compensa: cualquier limpieza de datos debe hacerse a
+  // propósito desde la consola de Firebase, no como efecto secundario de entrar.
 
   // Sincronizar el tema activo con la clase del body (con transición suave)
   useEffect(() => {
@@ -759,6 +763,9 @@ export default function App() {
       await setDoc(doc(db, 'submissions', docId), newSubmission);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'submissions');
+      // Propagamos: quien llama TIENE que saber que la entrega no llegó,
+      // para no festejar ni borrar el borrador del alumno.
+      throw error;
     }
   };
 
@@ -1059,6 +1066,7 @@ export default function App() {
       await setDoc(doc(db, 'submissions', docId), submission, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'submissions');
+      throw error; // el profe tiene que enterarse si la corrección no se guardó
     }
   };
 

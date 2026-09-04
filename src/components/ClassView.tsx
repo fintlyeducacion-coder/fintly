@@ -65,7 +65,7 @@ interface Props {
   classItem: ClassItem;
   submissions: ActivitySubmission[];
   onBack: () => void;
-  onSubmitActivity: (text: string) => void;
+  onSubmitActivity: (text: string) => void | Promise<void>;
 }
 
 /* ── ClassView ────────────────────────────────────────────────── */
@@ -73,6 +73,9 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
   const [tab,           setTab]           = useState<Tab>('content');
   const [response,      setResponse]      = useState('');
   const [justSubmitted, setJustSubmitted] = useState(false);
+  const [enviando,      setEnviando]      = useState(false);
+  const MAX_CARACTERES = 20000; // mismo tope que la regla de Firestore
+  const [errorEnvio,    setErrorEnvio]    = useState<string | null>(null);
   const [draftBanner,   setDraftBanner]   = useState(false);
 
   const existing  = submissions.find(s =>
@@ -95,19 +98,37 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
     else { setResponse(''); setDraftBanner(false); }
   }, [classItem.level, classItem.week, user.email, existing, draftKey]);
 
-  const onType = (text: string) => {
+  const onType = (rawText: string) => {
+    // Cortamos acá: si dejáramos pasar más, Firestore rechaza la entrega
+    // y el alumno se entera recién al final, con el texto ya escrito.
+    const text = rawText.slice(0, MAX_CARACTERES);
     setResponse(text);
     if (text.trim()) localStorage.setItem(draftKey, text);
     else localStorage.removeItem(draftKey);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!response.trim() || overdue) return;
-    onSubmitActivity(response);
-    setJustSubmitted(true);
-    localStorage.removeItem(draftKey);
-    setDraftBanner(false);
+    if (!response.trim() || overdue || enviando) return;
+
+    setEnviando(true);
+    setErrorEnvio(null);
+    try {
+      // Esperamos la confirmación de la base ANTES de festejar.
+      // Si esto falla y no lo esperáramos, el alumno vería el confeti,
+      // perdería el borrador y su trabajo no existiría en ningún lado.
+      await onSubmitActivity(response);
+
+      setJustSubmitted(true);
+      localStorage.removeItem(draftKey); // recién ahora es seguro borrarlo
+      setDraftBanner(false);
+    } catch (err) {
+      console.error('La entrega no se pudo guardar:', err);
+      // El borrador queda intacto a propósito: es el trabajo del alumno.
+      setErrorEnvio('No pudimos guardar tu entrega. Revisá tu conexión y probá de nuevo. Tu texto quedó guardado acá.');
+    } finally {
+      setEnviando(false);
+    }
   };
 
   const fmt = (d: string) => !d ? '—' : new Date(d).toLocaleDateString('es-AR', {
@@ -115,14 +136,14 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
   });
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
 
       {/* Back */}
       <motion.button
         type="button"
         onClick={onBack}
         whileHover={{ x: -2 }}
-        className="flex items-center gap-1.5 text-slate-500 hover:text-white light:hover:text-slate-800 text-[12px] font-semibold mb-7 transition-colors cursor-pointer group"
+        className="flex items-center gap-1.5 text-slate-500 hover:text-white light:hover:text-slate-800 text-[12px] font-semibold mb-5 sm:mb-7 transition-colors cursor-pointer group"
       >
         <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
         <span>Volver al dashboard</span>
@@ -133,9 +154,9 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="mb-8 space-y-2"
+        className="mb-6 sm:mb-8 space-y-2"
       >
-        <div className="flex items-center gap-2 text-[11px] font-mono">
+        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-[11px] font-mono">
           <span className="text-violet-400 light:text-violet-600 font-bold uppercase tracking-wider bg-violet-500/8 light:bg-violet-50 border border-violet-500/14 light:border-violet-200 px-2.5 py-1 rounded-lg">
             Semana {classItem.week}
           </span>
@@ -155,7 +176,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
       </motion.div>
 
       {/* Tabs */}
-      <div className="flex bg-white/[0.04] light:bg-slate-100 p-1 rounded-2xl border border-white/[0.06] light:border-slate-200 mb-8 overflow-x-auto no-scrollbar gap-0.5 w-fit shadow-sm">
+      <div className="flex bg-white/[0.04] light:bg-slate-100 p-1 rounded-2xl border border-white/[0.06] light:border-slate-200 mb-6 sm:mb-8 overflow-x-auto no-scrollbar gap-0.5 w-full sm:w-fit max-w-full shadow-sm">
         {TABS.map(({ id, label, Icon }) => {
           const active = tab === id;
           return (
@@ -163,7 +184,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
               key={id}
               type="button"
               onClick={() => setTab(id)}
-              className={`relative flex items-center gap-2 px-4 py-2.5 text-[12px] font-semibold rounded-xl whitespace-nowrap transition-all duration-250 cursor-pointer ${
+              className={`relative flex flex-1 sm:flex-none items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2.5 text-[11px] sm:text-[12px] font-semibold rounded-xl whitespace-nowrap transition-all duration-250 cursor-pointer ${
                 active ? 'text-white' : 'text-slate-400 light:text-slate-500 hover:text-slate-200 light:hover:text-slate-700'
               }`}
             >
@@ -174,8 +195,8 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
                   transition={{ type: 'spring', stiffness: 420, damping: 30 }}
                 />
               )}
-              <Icon className={`w-3.5 h-3.5 relative z-10 ${active ? 'opacity-100' : 'opacity-55'}`} />
-              <span className="relative z-10">{label}</span>
+              <Icon className={`w-4 h-4 sm:w-3.5 sm:h-3.5 relative z-10 shrink-0 ${active ? 'opacity-100' : 'opacity-55'}`} />
+              <span className="relative z-10 hidden min-[420px]:inline">{label}</span>
             </button>
           );
         })}
@@ -348,18 +369,34 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
                       value={response}
                       onChange={e => onType(e.target.value)}
                       placeholder="Escribí tu reflexión, análisis o respuesta a la consigna…"
-                      className="w-full min-h-[180px] bg-white/[0.03] light:bg-white border border-white/[0.07] light:border-slate-200 rounded-2xl p-4 text-[13px] text-white light:text-slate-800 placeholder-slate-600 light:placeholder-slate-400 font-sans focus:border-violet-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed resize-none leading-relaxed"
+                      maxLength={MAX_CARACTERES}
+                      className="w-full min-h-[200px] sm:min-h-[180px] text-base sm:text-[13px] bg-white/[0.03] light:bg-white border border-white/[0.07] light:border-slate-200 rounded-2xl p-4 text-[13px] text-white light:text-slate-800 placeholder-slate-600 light:placeholder-slate-400 font-sans focus:border-violet-500/50 transition-all disabled:opacity-40 disabled:cursor-not-allowed resize-none leading-relaxed"
                     />
-                    <div className="flex justify-between items-center">
-                      <span className="text-[10px] text-slate-600 font-mono">
-                        {response.length > 0 ? `${response.length} caracteres` : ''}
+                    {errorEnvio && (
+                      <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/25">
+                        <span className="text-rose-400 text-base leading-none mt-0.5">!</span>
+                        <p className="text-[12px] text-rose-300 light:text-rose-700 leading-relaxed">
+                          {errorEnvio}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col-reverse sm:flex-row sm:justify-between sm:items-center gap-3">
+                      <span className={`text-[10px] font-mono ${
+                        response.length > MAX_CARACTERES * 0.9 ? 'text-amber-400 font-bold' : 'text-slate-600'
+                      }`}>
+                        {response.length === 0
+                          ? ''
+                          : response.length > MAX_CARACTERES * 0.9
+                          ? `${response.length} / ${MAX_CARACTERES} caracteres`
+                          : `${response.length} caracteres`}
                       </span>
                       <button
                         type="submit"
-                        disabled={overdue || !response.trim()}
-                        className="liquid-glass-btn px-6 py-2.5 text-[13px]"
+                        disabled={overdue || !response.trim() || enviando}
+                        className="liquid-glass-btn w-full sm:w-auto px-6 py-3 sm:py-2.5 text-[13px]"
                       >
-                        Entregar actividad →
+                        {enviando ? 'Enviando…' : 'Entregar actividad →'}
                       </button>
                     </div>
                   </div>

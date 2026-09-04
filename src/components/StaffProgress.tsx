@@ -13,7 +13,7 @@ interface StaffProgressProps {
   classes: ClassItem[];
   role: 'directivo';
   user: User;
-  onSaveSubmission?: (sub: ActivitySubmission) => void;
+  onSaveSubmission?: (sub: ActivitySubmission) => void | Promise<void>;
 }
 
 const AVATAR_GRADIENTS = [
@@ -50,6 +50,7 @@ export default function StaffProgress({
   const [gradeInput, setGradeInput] = useState<'Excelente' | 'Muy bien' | 'Bien' | 'Puede mejorar' | null>(null);
   const [feedbackInput, setFeedbackInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
   // Sincronizar si cambia el usuario o colegio asignado
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function StaffProgress({
   const handleSaveGradeClick = async () => {
     if (!selectedSubmission || !gradeInput) return;
     setIsSaving(true);
+    setErrorGuardado(null);
     try {
       const updatedSub: ActivitySubmission = {
         ...selectedSubmission,
@@ -94,7 +96,8 @@ export default function StaffProgress({
         setIsSaving(false);
       }, 300);
     } catch (e) {
-      console.error(e);
+      console.error('La corrección no se pudo guardar:', e);
+      setErrorGuardado('No pudimos guardar la corrección. Revisá la conexión y probá de nuevo.');
       setIsSaving(false);
     }
   };
@@ -431,7 +434,7 @@ export default function StaffProgress({
               <span>Tareas y Entregas</span>
             </h2>
 
-            <div className="flex bg-[#14132b]/40 light:bg-neutral-100/85 backdrop-blur-md p-0.5 rounded-xl border border-white/5 light:border-neutral-200 text-[10px] font-bold relative z-10 gap-0.5 shadow-md">
+            <div className="flex bg-[#14132b]/40 light:bg-neutral-100/85 backdrop-blur-md p-0.5 rounded-xl border border-white/5 light:border-neutral-200 text-[10px] font-bold relative z-10 gap-0.5 shadow-md max-w-full overflow-x-auto no-scrollbar">
               <button
                 type="button"
                 onClick={() => setActiveSubTab('pending')}
@@ -608,7 +611,24 @@ export default function StaffProgress({
             <div className="p-6 space-y-5 max-h-[65vh] overflow-y-auto no-scrollbar">
               <div>
                 <span className="text-[9px] font-bold font-mono uppercase text-gray-500 tracking-wider">Alumno</span>
-                <div className="text-white light:text-neutral-900 text-sm font-semibold mt-0.5">{selectedSubmission.studentEmail}</div>
+                {(() => {
+                  // Buscamos el nombre en la lista de alumnos; si no está, mostramos el correo
+                  const alumno = students.find(
+                    st => st.email?.toLowerCase().trim() === selectedSubmission.studentEmail?.toLowerCase().trim()
+                  );
+                  return (
+                    <>
+                      <div className="text-white light:text-neutral-900 text-sm font-semibold mt-0.5">
+                        {alumno?.name || selectedSubmission.studentEmail}
+                      </div>
+                      {alumno?.name && (
+                        <div className="text-[11px] text-gray-500 font-mono mt-0.5">
+                          {selectedSubmission.studentEmail}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
 
               <div>
@@ -627,10 +647,10 @@ export default function StaffProgress({
                 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                   {([
-                    { key: 'Excelente', label: 'Excelente', emoji: '🌟', colorSel: 'bg-gradient-to-br from-emerald-600 to-teal-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/30', colorUnsel: 'bg-emerald-950/12 border-emerald-900/25 text-emerald-400 light:bg-emerald-50 light:text-emerald-700 hover:bg-emerald-950/22 hover:border-emerald-800/40' },
-                    { key: 'Muy bien', label: 'Muy bien', emoji: '👏', colorSel: 'bg-gradient-to-br from-sky-600 to-blue-600 border-sky-500 text-white shadow-lg shadow-sky-900/30', colorUnsel: 'bg-sky-950/12 border-sky-900/25 text-sky-400 light:bg-sky-50 light:text-sky-700 hover:bg-sky-950/22 hover:border-sky-800/40' },
+                    { key: 'Puede mejorar', label: 'Puede mejorar', emoji: '💪', colorSel: 'bg-gradient-to-br from-amber-600 to-orange-600 border-amber-500 text-white shadow-lg shadow-amber-900/30', colorUnsel: 'bg-amber-950/12 border-amber-900/25 text-amber-400 light:bg-amber-50 light:text-amber-800 hover:bg-amber-950/22 hover:border-amber-800/40' },
                     { key: 'Bien', label: 'Bien', emoji: '👍', colorSel: 'bg-gradient-to-br from-indigo-600 to-violet-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/30', colorUnsel: 'bg-indigo-950/12 border-indigo-900/25 text-indigo-400 light:bg-indigo-50 light:text-indigo-700 hover:bg-indigo-950/22 hover:border-indigo-800/40' },
-                    { key: 'Puede mejorar', label: 'Puede mejorar', emoji: '💪', colorSel: 'bg-gradient-to-br from-amber-600 to-orange-600 border-amber-500 text-white shadow-lg shadow-amber-900/30', colorUnsel: 'bg-amber-950/12 border-amber-900/25 text-amber-400 light:bg-amber-50 light:text-amber-800 hover:bg-amber-950/22 hover:border-amber-800/40' }
+                    { key: 'Muy bien', label: 'Muy bien', emoji: '👏', colorSel: 'bg-gradient-to-br from-sky-600 to-blue-600 border-sky-500 text-white shadow-lg shadow-sky-900/30', colorUnsel: 'bg-sky-950/12 border-sky-900/25 text-sky-400 light:bg-sky-50 light:text-sky-700 hover:bg-sky-950/22 hover:border-sky-800/40' },
+                    { key: 'Excelente', label: 'Excelente', emoji: '🌟', colorSel: 'bg-gradient-to-br from-emerald-600 to-teal-600 border-emerald-500 text-white shadow-lg shadow-emerald-900/30', colorUnsel: 'bg-emerald-950/12 border-emerald-900/25 text-emerald-400 light:bg-emerald-50 light:text-emerald-700 hover:bg-emerald-950/22 hover:border-emerald-800/40' }
                   ] as const).map((g) => {
                     const isSel = gradeInput === g.key;
                     return (
@@ -663,7 +683,16 @@ export default function StaffProgress({
               </div>
             </div>
 
-            <div className="p-4 bg-white/2 border-t border-white/5 light:border-neutral-200 flex justify-end gap-2 shrink-0">
+            <div className="p-4 bg-white/2 border-t border-white/5 light:border-neutral-200 flex flex-col gap-3 shrink-0">
+              {errorGuardado && (
+                <div className="flex items-start gap-2.5 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25">
+                  <span className="text-rose-400 text-base leading-none mt-0.5">!</span>
+                  <p className="text-[12px] text-rose-300 light:text-rose-700 leading-relaxed">
+                    {errorGuardado}
+                  </p>
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setSelectedSubmission(null)}
@@ -679,6 +708,7 @@ export default function StaffProgress({
               >
                 {isSaving ? 'Guardando...' : 'Confirmar e Inscribir'}
               </button>
+              </div>
             </div>
           </motion.div>
         </div>

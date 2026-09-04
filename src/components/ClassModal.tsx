@@ -996,7 +996,7 @@ ${error?.message || 'Error desconocido'}`);
               </div>
 
               {/* Tabs Navigation (Exact replica of ClassView) */}
-              <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 mb-8 overflow-x-auto no-scrollbar scroll-smooth self-start max-w-max relative z-10 shadow-lg gap-1">
+              <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 mb-8 overflow-x-auto no-scrollbar scroll-smooth self-start max-w-full relative z-10 shadow-lg gap-1">
                 {(
                   [
                     { id: 'content', label: 'Contenido' },

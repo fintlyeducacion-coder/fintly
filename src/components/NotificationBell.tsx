@@ -92,7 +92,7 @@ export default function NotificationBell({ user, classes, onOpenClass }: Props) 
         onClick={() => setOpen(o => !o)}
         whileTap={{ scale: 0.9 }}
         title="Novedades"
-        className={`relative w-9 h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer ${
+        className={`relative w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center rounded-xl transition-colors cursor-pointer ${
           unread.length > 0
             ? 'bg-violet-500/12 text-violet-300 light:text-violet-600 light:bg-violet-50'
             : 'text-slate-400 hover:text-white light:text-slate-500 light:hover:text-slate-800 hover:bg-white/[0.07] light:hover:bg-slate-100'
@@ -123,7 +123,7 @@ export default function NotificationBell({ user, classes, onOpenClass }: Props) 
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute right-0 top-[calc(100%+10px)] w-[300px] sm:w-[340px] surface-elevated rounded-2xl overflow-hidden z-50 origin-top-right"
+            className="absolute right-0 top-[calc(100%+10px)] w-[calc(100vw-2rem)] max-w-[340px] sm:w-[340px] surface-elevated rounded-2xl overflow-hidden z-50 origin-top-right"
           >
             {/* Header */}
             <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/[0.06] light:border-slate-100">

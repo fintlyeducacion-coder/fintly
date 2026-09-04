@@ -270,11 +270,11 @@ export default function AdminPanel({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="flex bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 self-start gap-1 relative z-10 shadow-lg overflow-x-auto no-scrollbar scroll-smooth">
+        <div className="flex w-full sm:w-auto sm:self-start max-w-full bg-[#14132b]/40 light:bg-neutral-100/80 backdrop-blur-xl p-1 rounded-2xl border border-white/5 light:border-neutral-200 gap-1 relative z-10 shadow-lg">
           {([
-            { key: 'negocio', label: 'Dashboard Negocio', icon: BarChart3, alert: false },
-            { key: 'clases', label: 'Biblioteca Syllabus', icon: BookOpen, alert: false },
-            { key: 'aprobaciones', label: `Aprobaciones (${pendingUsers.length})`, icon: UserCheck, alert: pendingUsers.length > 0 },
+            { key: 'negocio', label: 'Dashboard Negocio', corto: 'Negocio', icon: BarChart3, alert: false },
+            { key: 'clases', label: 'Biblioteca Syllabus', corto: 'Biblioteca', icon: BookOpen, alert: false },
+            { key: 'aprobaciones', label: `Aprobaciones (${pendingUsers.length})`, corto: `Cuentas (${pendingUsers.length})`, icon: UserCheck, alert: pendingUsers.length > 0 },
           ] as const).map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.key;
@@ -282,7 +282,7 @@ export default function AdminPanel({
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
-                className={`relative flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
+                className={`relative flex flex-1 sm:flex-none items-center justify-center gap-1.5 px-2 sm:px-4 py-3 sm:py-2.5 text-[11px] sm:text-xs font-bold rounded-xl whitespace-nowrap transition-all duration-300 cursor-pointer ${
                   isActive ? 'text-white' : 'text-gray-400 light:text-neutral-500 hover:text-gray-200'
                 }`}
               >
@@ -293,8 +293,9 @@ export default function AdminPanel({
                     transition={{ type: "spring", stiffness: 380, damping: 30 }}
                   />
                 )}
-                <Icon className="w-3.5 h-3.5 relative z-10" />
-                <span className="relative z-10">{tab.label}</span>
+                <Icon className="w-3.5 h-3.5 relative z-10 shrink-0" />
+                <span className="relative z-10 sm:hidden">{tab.corto}</span>
+                <span className="relative z-10 hidden sm:inline">{tab.label}</span>
                 {tab.alert && !isActive && (
                   <span className="relative z-10 w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                 )}
@@ -502,7 +503,7 @@ export default function AdminPanel({
             </div>
 
             {/* Level Selector */}
-            <div className="flex bg-[#14132b]/40 light:bg-neutral-100 p-1 rounded-2xl border border-white/5 light:border-neutral-200 gap-1 overflow-x-auto">
+            <div className="flex bg-[#14132b]/40 light:bg-neutral-100 p-1 rounded-2xl border border-white/5 light:border-neutral-200 gap-1 max-w-full overflow-x-auto no-scrollbar">
               {COURSES.map(course => (
                 <button
                   key={course.id}

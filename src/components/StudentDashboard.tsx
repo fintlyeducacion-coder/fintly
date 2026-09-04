@@ -349,7 +349,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
                   key={tab.id}
                   type="button"
                   onClick={() => setFilter(tab.id)}
-                  className={`relative flex items-center gap-1.5 px-3.5 py-1.5 font-semibold rounded-lg cursor-pointer whitespace-nowrap transition-all ${
+                  className={`relative flex items-center gap-1.5 px-3.5 py-3 sm:py-1.5 font-semibold rounded-lg cursor-pointer whitespace-nowrap transition-all ${
                     active ? 'text-white' : 'text-slate-400 light:text-slate-500 hover:text-slate-200 light:hover:text-slate-700'
                   }`}
                 >
@@ -553,7 +553,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
                 </div>
 
                 {/* Módulos */}
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-1 min-[400px]:grid-cols-2 gap-1.5">
                   {c.modules.map((m, mi) => (
                     <div key={mi} className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-white/[0.03] light:bg-slate-50 border border-white/[0.05] light:border-slate-100">
                       <span className={`w-4 h-4 rounded-md bg-gradient-to-br ${c.accent} flex items-center justify-center text-[8px] font-bold text-white shrink-0`}>
