@@ -988,6 +988,59 @@ export default function App() {
     }
   };
 
+  /**
+   * Renombrar un colegio en toda la base.
+   *
+   * El nombre del colegio no es solo una etiqueta: es la clave que vincula
+   * clases con alumnos, y además forma parte del ID de los documentos de
+   * clase publicados. Cambiarlo solo en la lista del código dejaría a los
+   * alumnos apuntando a un colegio inexistente.
+   *
+   * Esta función hace la migración completa:
+   *   1. Crea cada clase publicada con el ID nuevo y borra la vieja
+   *   2. Actualiza el campo school en users y en students
+   *
+   * Devuelve un resumen de lo que tocó, para poder mostrarlo.
+   */
+  const handleRenameSchool = async (nombreViejo: string, nombreNuevo: string) => {
+    const resumen = { clases: 0, usuarios: 0, alumnos: 0 };
+
+    // 1. Clases publicadas a ese colegio
+    const clasesSnap = await getDocs(collection(db, 'classes'));
+    for (const d of clasesSnap.docs) {
+      const cl = d.data() as ClassItem;
+      if (cl.school !== nombreViejo) continue;
+
+      const nuevoId = assignedId(nombreNuevo, cl.level, cl.module, cl.week);
+      await setDoc(doc(db, 'classes', nuevoId), { ...cl, school: nombreNuevo });
+      if (d.id !== nuevoId) {
+        await deleteDoc(doc(db, 'classes', d.id));
+      }
+      resumen.clases++;
+    }
+
+    // 2. Usuarios
+    const usersSnap = await getDocs(collection(db, 'users'));
+    for (const d of usersSnap.docs) {
+      const u = d.data() as User;
+      if (u.school !== nombreViejo) continue;
+      await setDoc(doc(db, 'users', d.id), { school: nombreNuevo }, { merge: true });
+      resumen.usuarios++;
+    }
+
+    // 3. Alumnos
+    const studentsSnap = await getDocs(collection(db, 'students'));
+    for (const d of studentsSnap.docs) {
+      const st = d.data() as Student;
+      if (st.school !== nombreViejo) continue;
+      await setDoc(doc(db, 'students', d.id), { school: nombreNuevo }, { merge: true });
+      resumen.alumnos++;
+    }
+
+    console.log('Colegio renombrado:', nombreViejo, '->', nombreNuevo, resumen);
+    return resumen;
+  };
+
   // Aprobar un usuario con rol 'pausado' y asignarle un rol y curso formal
   const handleApproveUser = async (email: string, targetRole: 'alumno' | 'directivo' | 'admin', level?: number, school?: string) => {
     try {
@@ -1254,6 +1307,7 @@ export default function App() {
                   onDeleteClass={handleDeleteClass}
                   onAssignClass={handleAssignClass}
                   onApproveUser={handleApproveUser}
+                  onRenameSchool={handleRenameSchool}
                   onDeleteUser={handleDeleteUser}
                 />
               </motion.div>

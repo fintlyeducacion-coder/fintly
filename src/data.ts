@@ -6,7 +6,7 @@ import { ClassItem } from './types';
  * así que cambiar uno acá desvincula lo ya publicado a ese colegio en Firestore.
  */
 export const ASSOCIATED_SCHOOLS = [
-  'Faro Benavides',
+  'Faro Benavidez',
   'Faro Escobar',
   'Northfield Puertos',
   'Northfield Nordelta',
