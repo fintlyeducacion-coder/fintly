@@ -59,6 +59,22 @@ export default function AdminPanel({
   const [migrando, setMigrando] = useState(false);
   const [resultadoMigracion, setResultadoMigracion] = useState<string | null>(null);
 
+  /**
+   * Nombres de colegio que realmente aparecen en los datos, vengan de donde vengan.
+   * Se ofrecen en un desplegable en vez de un campo libre: la migración compara
+   * el texto exacto, así que una letra distinta hacía que no encontrara nada.
+   */
+  const colegiosEnDatos = Array.from(
+    new Set([
+      ...classes.filter(cl => !cl.isSyllabus).map(cl => cl.school),
+      ...students.map(st => st.school),
+      ...allUsers.filter(u => u.role !== 'admin').map(u => u.school),
+    ].filter((x): x is string => typeof x === 'string' && x.trim() !== ''))
+  ).sort();
+
+  /** Los que están en los datos pero ya no figuran en la lista oficial. */
+  const colegiosHuerfanos = colegiosEnDatos.filter(c => !ASSOCIATED_SCHOOLS.includes(c));
+
   const ejecutarMigracion = async () => {
     if (!onRenameSchool || !migrarDe.trim() || !migrarA.trim()) return;
     setMigrando(true);
@@ -816,79 +832,71 @@ export default function AdminPanel({
                     Usuarios Habilitados ({activeUsers.length})
                   </h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {porColegio.map(({ colegio, alumnos, directivos, total }) => (
-                      <button
-                        key={colegio}
-                        onClick={() => { setColegioAbierto(colegio); setUserSearchQuery(''); }}
-                        className="group text-left surface hover-lift rounded-2xl p-4 cursor-pointer flex flex-col gap-3"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="w-9 h-9 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0">
-                            <School className="w-4 h-4 text-violet-400 light:text-violet-600" />
+                  {/* Filas compactas: con 8 items una lista se lee mejor que tarjetas grandes */}
+                  <div className="rounded-2xl border border-white/5 light:border-neutral-200 bg-neutral-900/30 light:bg-white overflow-hidden">
+                    <div className="divide-y divide-white/5 light:divide-neutral-100">
+                      {porColegio.map(({ colegio, alumnos, directivos, total }) => (
+                        <button
+                          key={colegio}
+                          onClick={() => { setColegioAbierto(colegio); setUserSearchQuery(''); }}
+                          className="group w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-violet-500/[0.05] light:hover:bg-violet-50/50 transition-colors cursor-pointer"
+                        >
+                          <span className="w-7 h-7 rounded-lg bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0">
+                            <School className="w-3.5 h-3.5 text-violet-400 light:text-violet-600" />
                           </span>
-                          <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-violet-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-2" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-white light:text-neutral-900 text-sm leading-tight">
+
+                          <span className="flex-1 min-w-0 font-semibold text-white light:text-neutral-900 text-sm truncate group-hover:text-violet-300 light:group-hover:text-violet-700 transition-colors">
                             {colegio}
-                          </h4>
-                          <p className="text-[11px] text-gray-500 font-mono mt-1">
-                            {total === 0
-                              ? 'Sin usuarios'
-                              : `${alumnos.length} alumno${alumnos.length === 1 ? '' : 's'}${
-                                  directivos.length > 0
-                                    ? ` · ${directivos.length} directivo${directivos.length === 1 ? '' : 's'}`
-                                    : ''
-                                }`}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-
-                    {/* Equipo Fintly: los admin no pertenecen a un colegio */}
-                    <button
-                      onClick={() => { setColegioAbierto('__equipo__'); setUserSearchQuery(''); }}
-                      className="group text-left surface hover-lift rounded-2xl p-4 cursor-pointer flex flex-col gap-3"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0">
-                          <Users className="w-4 h-4 text-indigo-400 light:text-indigo-600" />
-                        </span>
-                        <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-2" />
-                      </div>
-                      <div>
-                        <h4 className="font-bold text-white light:text-neutral-900 text-sm leading-tight">
-                          Equipo Fintly
-                        </h4>
-                        <p className="text-[11px] text-gray-500 font-mono mt-1">
-                          {equipoFintly.length} admin{equipoFintly.length === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                    </button>
-
-                    {/* Sin colegio: solo aparece si hay alguien, porque es un problema a resolver */}
-                    {sinColegio.length > 0 && (
-                      <button
-                        onClick={() => { setColegioAbierto('__sin__'); setUserSearchQuery(''); }}
-                        className="group text-left rounded-2xl p-4 cursor-pointer flex flex-col gap-3 bg-amber-500/[0.05] border border-amber-500/25 hover:border-amber-500/45 transition-colors"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="w-9 h-9 rounded-xl bg-amber-500/12 border border-amber-500/25 flex items-center justify-center shrink-0">
-                            <AlertTriangle className="w-4 h-4 text-amber-400 light:text-amber-600" />
                           </span>
-                          <ChevronRight className="w-4 h-4 text-amber-500/60 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-2" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold text-white light:text-neutral-900 text-sm leading-tight">
-                            Sin colegio asignado
-                          </h4>
-                          <p className="text-[11px] text-amber-400/80 light:text-amber-700 font-mono mt-1">
-                            {sinColegio.length} usuario{sinColegio.length === 1 ? '' : 's'} · no ven clases
-                          </p>
-                        </div>
+
+                          <span className="text-[11px] text-gray-500 font-mono shrink-0 text-right">
+                            {total === 0
+                              ? 'vacío'
+                              : `${alumnos.length} alumno${alumnos.length === 1 ? '' : 's'}${
+                                  directivos.length > 0 ? ` · ${directivos.length} dir.` : ''
+                                }`}
+                          </span>
+
+                          <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-violet-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </button>
+                      ))}
+
+                      {/* Equipo Fintly: los admin no pertenecen a un colegio */}
+                      <button
+                        onClick={() => { setColegioAbierto('__equipo__'); setUserSearchQuery(''); }}
+                        className="group w-full text-left px-4 py-3 flex items-center gap-3 hover:bg-indigo-500/[0.05] light:hover:bg-indigo-50/50 transition-colors cursor-pointer"
+                      >
+                        <span className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center shrink-0">
+                          <Users className="w-3.5 h-3.5 text-indigo-400 light:text-indigo-600" />
+                        </span>
+                        <span className="flex-1 min-w-0 font-semibold text-white light:text-neutral-900 text-sm truncate">
+                          Equipo Fintly
+                        </span>
+                        <span className="text-[11px] text-gray-500 font-mono shrink-0">
+                          {equipoFintly.length} admin{equipoFintly.length === 1 ? '' : 's'}
+                        </span>
+                        <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all shrink-0" />
                       </button>
-                    )}
+
+                      {/* Sin colegio: solo aparece si hay alguien, porque es algo a resolver */}
+                      {sinColegio.length > 0 && (
+                        <button
+                          onClick={() => { setColegioAbierto('__sin__'); setUserSearchQuery(''); }}
+                          className="group w-full text-left px-4 py-3 flex items-center gap-3 bg-amber-500/[0.04] hover:bg-amber-500/[0.09] transition-colors cursor-pointer"
+                        >
+                          <span className="w-7 h-7 rounded-lg bg-amber-500/12 border border-amber-500/25 flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-400 light:text-amber-600" />
+                          </span>
+                          <span className="flex-1 min-w-0 font-semibold text-white light:text-neutral-900 text-sm truncate">
+                            Sin colegio asignado
+                          </span>
+                          <span className="text-[11px] text-amber-400/80 light:text-amber-700 font-mono shrink-0">
+                            {sinColegio.length} · no ven clases
+                          </span>
+                          <ChevronRight className="w-4 h-4 text-amber-500/60 group-hover:text-amber-400 group-hover:translate-x-0.5 transition-all shrink-0" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </>
               ) : (
@@ -941,17 +949,20 @@ export default function AdminPanel({
                 <div className="divide-y divide-white/5 light:divide-neutral-100">
                   {genteVisible.map(u => (
                     <div key={u.email}>
-                    <div className="p-4 flex items-center justify-between gap-4">
-                      <div>
+                    <div className="p-4 flex items-center gap-4">
+                      {/* El rol va en columna fija: pegado al nombre quedaba desalineado,
+                          porque cada nombre tiene un largo distinto. */}
+                      <span className={`w-[74px] shrink-0 text-center px-2 py-0.5 rounded-md font-mono text-[9px] uppercase font-bold ${
+                        u.role === 'admin' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' :
+                        u.role === 'directivo' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
+                        'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      }`}>
+                        {u.role}
+                      </span>
+
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-white light:text-neutral-900 text-sm">{u.name}</span>
-                          <span className={`px-2 py-0.5 rounded-md font-mono text-[9px] uppercase font-bold ${
-                            u.role === 'admin' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' :
-                            u.role === 'directivo' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' :
-                            'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          }`}>
-                            {u.role}
-                          </span>
+                          <span className="font-bold text-white light:text-neutral-900 text-sm truncate">{u.name}</span>
                         </div>
                         <div className="flex items-center gap-2 text-xs text-gray-500 font-mono mt-0.5">
                           <span>{u.email}</span>
@@ -1055,31 +1066,58 @@ export default function AdminPanel({
 
                   <div className="px-4 pb-4 space-y-3 border-t border-white/5 light:border-neutral-200 pt-3">
                     <p className="text-[11px] text-gray-500 leading-relaxed max-w-2xl">
-                      El nombre del colegio vincula las clases con los alumnos. Cambiarlo solo en
-                      la lista dejaría a los alumnos apuntando a un colegio inexistente. Esta
-                      herramienta lo renombra en las clases publicadas, en los usuarios y en los
-                      alumnos, todo junto. Escribí el nombre viejo exactamente como figura hoy.
+                      El nombre del colegio vincula las clases con los alumnos. Esta herramienta
+                      lo renombra en las clases publicadas, en los usuarios y en los alumnos, todo
+                      junto. La lista de la izquierda muestra los nombres tal como figuran hoy en
+                      la base.
                     </p>
 
+                    {colegiosHuerfanos.length > 0 && (
+                      <div className="p-3 rounded-xl bg-amber-500/[0.07] border border-amber-500/20 text-[11px] text-amber-300 light:text-amber-800 leading-relaxed">
+                        Hay datos apuntando a {colegiosHuerfanos.length === 1 ? 'un colegio que ya no está' : 'colegios que ya no están'} en la lista:{' '}
+                        <strong>{colegiosHuerfanos.join(', ')}</strong>. Los alumnos en esa situación no ven clases.
+                      </div>
+                    )}
+
                     <div className="flex flex-col sm:flex-row gap-2.5">
-                      <input
-                        type="text"
-                        value={migrarDe}
-                        onChange={e => setMigrarDe(e.target.value)}
-                        placeholder="Nombre actual (ej: Faro Benavides)"
-                        className="flex-1 h-10 bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-xl px-3 text-xs text-white light:text-neutral-800"
-                      />
-                      <input
-                        type="text"
-                        value={migrarA}
-                        onChange={e => setMigrarA(e.target.value)}
-                        placeholder="Nombre nuevo (ej: Faro Benavidez)"
-                        className="flex-1 h-10 bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-xl px-3 text-xs text-white light:text-neutral-800"
-                      />
+                      <label className="flex-1 min-w-0">
+                        <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500 mb-1">
+                          Nombre actual
+                        </span>
+                        <select
+                          value={migrarDe}
+                          onChange={e => setMigrarDe(e.target.value)}
+                          className="w-full h-10 bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-xl px-3 text-xs text-white light:text-neutral-800 cursor-pointer"
+                        >
+                          <option value="">Elegí uno…</option>
+                          {colegiosEnDatos.map(c => (
+                            <option key={c} value={c}>
+                              {c}{ASSOCIATED_SCHOOLS.includes(c) ? '' : '  (fuera de la lista)'}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label className="flex-1 min-w-0">
+                        <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500 mb-1">
+                          Pasa a llamarse
+                        </span>
+                        <select
+                          value={migrarA}
+                          onChange={e => setMigrarA(e.target.value)}
+                          className="w-full h-10 bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-xl px-3 text-xs text-white light:text-neutral-800 cursor-pointer"
+                        >
+                          <option value="">Elegí uno…</option>
+                          {ASSOCIATED_SCHOOLS.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </label>
+
                       <button
                         onClick={ejecutarMigracion}
-                        disabled={migrando || !migrarDe.trim() || !migrarA.trim()}
-                        className="liquid-glass-btn px-5 h-10 text-xs shrink-0 disabled:opacity-40"
+                        disabled={migrando || !migrarDe || !migrarA || migrarDe === migrarA}
+                        className="liquid-glass-btn px-5 h-10 text-xs shrink-0 disabled:opacity-40 self-end"
                       >
                         {migrando ? 'Migrando…' : 'Renombrar'}
                       </button>
