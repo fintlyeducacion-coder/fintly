@@ -30,11 +30,10 @@ import {
   deleteDoc,
   onSnapshot,
   query,
-  where,
-  getDocFromServer
+  where
 } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './firestore-errors';
-import { syllabusId, assignedId, submissionId, submissionIdExistente, idsHistoricos } from './classKeys';
+import { syllabusId, assignedId, submissionId, submissionIdExistente, idsHistoricos, entregaEsDeLaClase } from './classKeys';
 import { Clock } from 'lucide-react';
 
 // ─── DEV BYPASS ──────────────────────────────────────────────────────────────
@@ -110,19 +109,12 @@ export default function App() {
   // Clave de reinicio para limpiar estados locales de subpaneles al hacer clic en Fintly logo
   const [homeResetKey, setHomeResetKey] = useState<number>(0);
 
-  // --- 1. PROBAR CONEXIÓN FIRESTORE AL BOOT ---
-  useEffect(() => {
-    async function testConnection() {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration. Currently offline.");
-        }
-      }
-    }
-    testConnection();
-  }, []);
+  // Se elimino la prueba de conexion a Firestore del arranque.
+  //
+  // Leia 'test/connection' al montar, antes de que hubiera sesion. Las reglas
+  // exigen estar autenticado para leer esa coleccion, asi que fallaba siempre
+  // y el error se tragaba: ruido permanente en la consola que no diagnosticaba
+  // nada. Los errores reales de Firestore ya se reportan donde ocurren.
 
   // --- 1.b COMPLETAR LOGIN QUE VOLVIÓ POR REDIRECCIÓN ---
   // Si el navegador no soportó el popup, el usuario fue a Google y volvió acá.
@@ -267,9 +259,10 @@ export default function App() {
             }
           }
 
+          // No guardamos el perfil en localStorage: nada lo lee desde que la
+          // sesion se resuelve solo con Firebase Auth. Dejarlo ahi era guardar
+          // rol, colegio y nivel en un lugar que cualquiera puede editar.
           setCurrentUser(userProfile);
-          localStorage.setItem('fintly_logged_user', JSON.stringify(userProfile));
-          localStorage.setItem('fintly_login_provider', 'google');
 
           // Enrutar al panel correspondiente de forma automática
           if (userProfile.role === 'admin') {
@@ -436,7 +429,6 @@ export default function App() {
         if (!cambio) return;
 
         setCurrentUser(perfil);
-        localStorage.setItem('fintly_logged_user', JSON.stringify(perfil));
 
         // Si cambió el rol, hay que llevarlo a la pantalla que le corresponde
         if (perfil.role !== anterior.role) {
@@ -454,9 +446,14 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser?.email, authInitialized]);
 
-  // --- 4B. ESCUCHAR UNIVERSAL DE USUARIOS PARA STAFF ---
+  // --- 4B. ESCUCHAR LA COLECCIÓN DE USUARIOS (SOLO ADMIN) ---
+  //
+  // Antes esto corría también para los directivos, que se descargaban nombre,
+  // correo, rol, nivel y colegio de TODOS los usuarios de TODOS los colegios.
+  // Y ni siquiera lo usaban: las aprobaciones viven en el panel de admin, y
+  // StaffProgress no recibe allUsers. Era exposición pura sin beneficio.
   useEffect(() => {
-    if (!currentUser || !authInitialized || (currentUser.role !== 'admin' && currentUser.role !== 'directivo')) {
+    if (!currentUser || !authInitialized || currentUser.role !== 'admin') {
       setAllUsers([]);
       return;
     }
@@ -502,7 +499,15 @@ export default function App() {
         } else {
           const userLevel = currentUser.level || 0;
           const userSchool = currentUser.school || SIN_ASIGNAR;
-          const availableCount = classes.filter(cl => cl.level === userLevel && !cl.isSyllabus && (cl.school?.toLowerCase() === userSchool.toLowerCase() || !cl.school)).length;
+          // Solo las clases publicadas A SU COLEGIO. Antes el filtro incluía
+          // "|| !cl.school", que mete las plantillas del syllabus (no tienen
+          // colegio) y le inflaba el total con clases que nunca va a ver.
+          const availableCount = classes.filter(
+            (cl) =>
+              cl.level === userLevel &&
+              !cl.isSyllabus &&
+              cl.school?.toLowerCase() === userSchool.toLowerCase()
+          ).length;
 
           setStudentsByState([{
             name: currentUser.name,
@@ -510,7 +515,7 @@ export default function App() {
             initials: currentUser.initials,
             level: userLevel,
             progress: 0,
-            total: availableCount || 32,
+            total: availableCount,
             status: 'ok',
             school: userSchool
           }]);
@@ -584,43 +589,71 @@ export default function App() {
 
     const now = new Date();
 
+    // La correspondencia entrega <-> clase vive en classKeys.ts, junto al
+    // resto de la identidad de una clase.
+    const correspondeA = entregaEsDeLaClase;
+
     const updateStudentProgressesOnServer = async () => {
       for (const student of studentsByState) {
-        const studentEmail = student.email || 'alumno@fintly.pro';
+        // Sin correo no hay a quién atribuirle el progreso. Antes caía en un
+        // fallback a 'alumno@fintly.pro' y le escribía el progreso de este
+        // alumno encima del documento de esa cuenta de prueba.
+        if (!student.email) continue;
+
+        const studentEmail = student.email;
         const studentSchool = student.school || SIN_ASIGNAR;
+
         const studentSubmissions = submissions.filter(
           (sub) => sub.studentEmail.toLowerCase() === studentEmail.toLowerCase()
         );
-        const courseClasses = classes.filter(
-          (cl) => cl.level === student.level && !cl.isSyllabus && (cl.school?.toLowerCase() === studentSchool.toLowerCase() || !cl.school)
-        );
-        const totalClassesCount = courseClasses.length || 32;
-        const progress = studentSubmissions.length;
 
-        // Semáforo con criterio temporal real:
-        // Clases que ya vencieron según su deadline
-        const overdueClasses = courseClasses.filter(cl => cl.deadline && now > new Date(cl.deadline));
-        // De esas clases vencidas, cuántas entregó el alumno
-        const completedOverdueCount = overdueClasses.filter(cl => 
-          studentSubmissions.some(s => s.classLevel === cl.level && s.classWeek === cl.week)
+        // Las clases del alumno son SOLO las publicadas a su colegio.
+        // El filtro anterior incluía "|| !cl.school", o sea las plantillas del
+        // syllabus, que en el navegador del staff vienen todas: le inflaba el
+        // total a cada alumno y le bajaba el porcentaje de avance.
+        const courseClasses = classes.filter(
+          (cl) =>
+            cl.level === student.level &&
+            !cl.isSyllabus &&
+            cl.school?.toLowerCase() === studentSchool.toLowerCase()
+        );
+
+        const totalClassesCount = courseClasses.length;
+
+        // Contamos solo las entregas que corresponden a una clase suya. Antes
+        // era studentSubmissions.length a secas, así que una entrega de otro
+        // nivel le sumaba avance en este.
+        const progress = courseClasses.filter((cl) =>
+          studentSubmissions.some((s) => correspondeA(s, cl))
         ).length;
 
-        // Si no hay clases vencidas aún, o entregó todas las clases que ya vencieron -> 'ok' (Verde).
-        // Si adeuda alguna clase con fecha límite vencida -> 'warn' (Amarillo).
-        const status = (overdueClasses.length === 0 || completedOverdueCount >= overdueClasses.length) ? 'ok' : 'warn';
+        // Semáforo: de las clases cuyo plazo ya venció, cuántas entregó.
+        const overdueClasses = courseClasses.filter(
+          (cl) => cl.deadline && now > new Date(cl.deadline)
+        );
+        const completedOverdueCount = overdueClasses.filter((cl) =>
+          studentSubmissions.some((s) => correspondeA(s, cl))
+        ).length;
 
-        if (student.progress !== progress || student.total !== totalClassesCount || student.status !== status) {
+        const status =
+          overdueClasses.length === 0 || completedOverdueCount >= overdueClasses.length
+            ? 'ok'
+            : 'warn';
+
+        if (
+          student.progress !== progress ||
+          student.total !== totalClassesCount ||
+          student.status !== status
+        ) {
           try {
-            const studentDocId = studentEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-            await setDoc(doc(db, 'students', studentDocId), {
-              ...student,
-              progress,
-              total: totalClassesCount,
-              status
-            }, { merge: true });
+            const studentDocId = studentEmail.toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '_');
+            await setDoc(
+              doc(db, 'students', studentDocId),
+              { ...student, progress, total: totalClassesCount, status },
+              { merge: true }
+            );
           } catch (e) {
-            // Silenciar o manejar con error de persistencia
-            console.warn("Could not sync student progress recalculation:", e);
+            console.warn('Could not sync student progress recalculation:', e);
           }
         }
       }
@@ -662,25 +695,19 @@ export default function App() {
 
       console.error('Google Sign-In failed:', e);
 
-      // Mensajes concretos por causa: el genérico no deja diagnosticar nada
-      const MENSAJES: Record<string, string> = {
-        'auth/unauthorized-domain':
-          'Este dominio no está autorizado en Firebase. Agregá "localhost" en Firebase Console → Authentication → Settings → Authorized domains.',
-        'auth/operation-not-allowed':
-          'El proveedor de Google no está habilitado. Activalo en Firebase Console → Authentication → Sign-in method → Google.',
-        'auth/invalid-api-key':
-          'La apiKey del archivo firebase-applet-config.json no es válida para este proyecto.',
-        'auth/configuration-not-found':
-          'Falta configurar Authentication en este proyecto de Firebase.',
-        'auth/network-request-failed':
-          'No hubo conexión con Firebase. Revisá la red o si algo está bloqueando el pedido.',
-        'auth/internal-error':
-          'Error interno de Firebase Auth. Suele ser configuración incompleta del proveedor de Google.',
-      };
-
+      // Al alumno se le dice algo que pueda accionar. El detalle tecnico va a
+      // la consola, que es donde sirve. Antes se le mostraba en pantalla cosas
+      // como "agrega localhost en Firebase Console", que no es para el y ademas
+      // expone como esta armado el sistema por dentro.
       const codigo = e?.code || 'sin-codigo';
-      const detalle = MENSAJES[codigo] || (e?.message || 'Error desconocido');
-      setAuthError(`${detalle}  [${codigo}]`);
+
+      const PROBLEMA_DE_RED = codigo === 'auth/network-request-failed';
+      const MENSAJE = PROBLEMA_DE_RED
+        ? 'No pudimos conectarnos. Revisá tu conexión y probá de nuevo.'
+        : 'No pudimos iniciar sesión. Probá de nuevo en un momento; si sigue fallando, avisale a tu profe.';
+
+      console.error('Detalle para el equipo — codigo de Firebase Auth:', codigo, e);
+      setAuthError(MENSAJE);
     }
   };
 
@@ -691,6 +718,7 @@ export default function App() {
     } catch (e) {
       console.error("SignOut auth error:", e);
     }
+    // Limpiamos las claves historicas por si quedaron de una version anterior
     localStorage.removeItem('fintly_logged_user');
     localStorage.removeItem('fintly_login_provider');
     setCurrentUser(null);
@@ -712,36 +740,48 @@ export default function App() {
     }
   };
 
-  // Abrir vista detallada de una clase
-  const handleOpenClass = (level: number, week: number) => {
+  /**
+   * Abrir la vista detallada de una clase.
+   *
+   * El módulo es OBLIGATORIO. Sin él, buscar por nivel y semana encuentra
+   * cuatro clases distintas (la "clase 1" existe en los módulos 1, 2, 3 y 4)
+   * y devuelve la primera. El alumno tocaba una clase y se le abría otra,
+   * y después entregaba ahí, porque la entrega usa activeClassItem.
+   */
+  const handleOpenClass = (level: number, module: number | undefined, week: number) => {
+    const mismoModulo = (cl: ClassItem) => (cl.module ?? 1) === (module ?? 1);
+
     let targetClass: ClassItem | undefined;
 
     if (currentUser && currentUser.role === 'alumno') {
-      // Priorizar la clase asignada al colegio del alumno (que no sea Syllabus)
+      // Priorizar la clase publicada al colegio del alumno (no la plantilla)
       targetClass = classes.find(
         (cl) =>
           cl.level === level &&
           cl.week === week &&
+          mismoModulo(cl) &&
           cl.school?.toLowerCase() === currentUser.school?.toLowerCase() &&
           !cl.isSyllabus
       );
     }
 
-    // Si no se encontró (o no es alumno), buscar la clase asignada o la primera que coincida
     if (!targetClass) {
       targetClass = classes.find(
-        (cl) => cl.level === level && cl.week === week && !cl.isSyllabus
+        (cl) => cl.level === level && cl.week === week && mismoModulo(cl) && !cl.isSyllabus
       );
     }
     if (!targetClass) {
       targetClass = classes.find(
-        (cl) => cl.level === level && cl.week === week
+        (cl) => cl.level === level && cl.week === week && mismoModulo(cl)
       );
     }
 
     if (targetClass) {
       setActiveClassItem(targetClass);
       setCurrentView('classview');
+    } else {
+      // Que no quede en silencio: si no está, algo se desincronizó
+      console.warn('No se encontró la clase', { level, module, week });
     }
   };
 
@@ -754,6 +794,9 @@ export default function App() {
       classModule: activeClassItem.module ?? 1,
       classWeek: activeClassItem.week,
       studentEmail: currentUser.email.toLowerCase(),
+      // El colegio queda grabado en la entrega para poder aislarla por
+      // institución, tanto al consultarla como en las reglas de seguridad.
+      school: activeClassItem.school || currentUser.school,
       responseText: responseText.trim(),
       submittedAt: new Date().toISOString()
     };
@@ -855,10 +898,11 @@ export default function App() {
 
       // 4. Las entregas de esa clase
       const entregasDeLaClase = submissions.filter((sub) => {
-        // Las entregas viejas no tienen classModule: si falta, no filtramos por módulo
-        const mismoModulo = sub.classModule === undefined || sub.classModule === (module ?? 1);
-        const mismaClase = sub.classLevel === level && sub.classWeek === week && mismoModulo;
-        if (!mismaClase) return false;
+        // Mismo criterio que el cartel de confirmación del panel: si no
+        // coinciden, se anuncia una cantidad de entregas y se borra otra. Y una
+        // entrega sin módulo cuenta como del 1, así que borrar la clase 1 del
+        // módulo 3 ya no se lleva puesta una entrega histórica del módulo 1.
+        if (!entregaEsDeLaClase(sub, { level, module, week })) return false;
 
         if (school) {
           const alumno = studentsByState.find(
@@ -878,131 +922,60 @@ export default function App() {
     }
   };
 
-  // Guardar, crear, admitir o invitar un alumno en Firestore
-  const handleSaveStudent = async (student: Student) => {
-    if (!student.email) return;
-    const cleanEmail = student.email.toLowerCase();
+  // Se eliminaron handleSaveStudent y handleDeleteStudent.
+  //
+  // Eran codigo inalcanzable: las props onSaveStudent/onDeleteStudent se
+  // sacaron del panel cuando las altas pasaron a resolverse por aprobacion.
+  // Adentro quedaba el mail de invitacion, que mandaba al alumno a /?register
+  // a "configurar su clave" — una pantalla y un sistema de contrasenas que
+  // ya no existen. Reactivarlo sin leerlo le habria mandado a los chicos un
+  // enlace muerto. Si se retoma la invitacion por mail, se escribe de nuevo
+  // contra el flujo actual.
 
-    try {
-      const docId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      await setDoc(doc(db, 'students', docId), {
-        ...student,
-        email: cleanEmail
-      });
+  /**
+   * Rellenar el campo 'school' en las entregas que no lo tienen.
+   *
+   * Las entregas anteriores a octubre de 2026 se guardaron sin colegio, porque
+   * el campo no existía. Mientras falte, no se pueden aislar por institución:
+   * ni la consulta ni las reglas de seguridad tienen por dónde agarrarlas.
+   *
+   * El colegio se deduce del registro del alumno que la entregó. Si el alumno
+   * ya no existe, la entrega se deja como está y se informa aparte, para que
+   * se decida a mano qué hacer con ella.
+   */
+  const handleBackfillSubmissionSchools = async () => {
+    const resumen = { actualizadas: 0, yaTenian: 0, sinAlumno: 0 };
 
-      // Asegurar perfil del usuario si no existe
-      const userProfileRef = doc(db, 'users', cleanEmail);
-      const userProfileSnap = await getDoc(userProfileRef);
-      if (!userProfileSnap.exists()) {
-        await setDoc(userProfileRef, {
-          email: cleanEmail,
-          name: student.name,
-          role: 'alumno',
-          initials: student.initials || student.name[0].toUpperCase(),
-          level: student.level,
-          school: student.school
-        });
+    // Mapa correo -> colegio, armado desde la colección de alumnos
+    const alumnosSnap = await getDocs(collection(db, 'students'));
+    const colegioPorCorreo = new Map<string, string>();
+    alumnosSnap.forEach((d) => {
+      const st = d.data() as Student;
+      const correo = st.email?.toLowerCase().trim();
+      if (correo && st.school) colegioPorCorreo.set(correo, st.school);
+    });
 
-        // ENVIAR INVITACIÓN AUTOMÁTICA VÍA FIREBASE (Trigger Email Extension)
-        // Guardamos el documento en la colección 'mail' para que la extensión de Firebase envíe el correo físico
-        const registerLink = `${window.location.origin}/?register&email=${encodeURIComponent(cleanEmail)}`;
-        const mailDocRef = doc(collection(db, 'mail'));
-        await setDoc(mailDocRef, {
-          to: cleanEmail,
-          message: {
-            subject: `Invitación Académica a Fintly Campus Virtual (${student.school})`,
-            text: `¡Hola ${student.name}!\n\nTe damos la bienvenida a Fintly, la plataforma interactiva de educación financiera.\nHas sido invitado/a por tus docentes de "${student.school}" para formar parte del Nivel ${student.level + 1}.\n\nPara activar tu cuenta y comenzar, ingresá en el siguiente enlace institucional:\n${registerLink}\n\n¡Te deseamos el mayor de los éxitos!\n\nEquipo Fintly`,
-            html: `
-              <div style="background-color: #050510; padding: 40px 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; min-height: 100%; width: 100%; box-sizing: border-box; margin: 0;">
-                <div style="max-width: 540px; margin: 0 auto; background-color: #0f0f24; border: 1px solid #221c4e; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-                  <!-- Top Vivid Banner -->
-                  <div style="background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); padding: 36px 24px; text-align: center; border-bottom: 1px solid #221c4e;">
-                    <!-- Logo Accent -->
-                    <div style="background-color: rgba(255, 255, 255, 0.12); display: inline-block; padding: 8px 16px; border-radius: 12px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.18);">
-                      <span style="color: #ffffff; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; font-family: sans-serif;">Fintly</span>
-                    </div>
-                    <h2 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.3;">¡Hola, ${student.name}!</h2>
-                    <p style="color: #c7d2fe; font-size: 13px; margin: 6px 0 0 0; font-weight: 500;">Te damos la bienvenida al Campus Virtual de Fintly</p>
-                  </div>
+    const entregasSnap = await getDocs(collection(db, 'submissions'));
+    for (const d of entregasSnap.docs) {
+      const sub = d.data() as ActivitySubmission;
 
-                  <!-- Main Content Body -->
-                  <div style="padding: 32px 24px; color: #d1d5db; line-height: 1.6; font-size: 14px; background-color: #0f0f24;">
-                    <p style="margin-top: 0; color: #9ca3af;">Tu institución educativa te ha asignado acceso directo para formar parte de la plataforma de educación financiera interactiva.</p>
-                    
-                    <div style="background-color: #060614; border: 1px solid #1e1b4b; border-radius: 18px; padding: 20px; margin: 24px 0;">
-                      <span style="font-size: 10px; font-weight: 700; text-transform: uppercase; color: #818cf8; letter-spacing: 0.12em; display: block; margin-bottom: 12px; font-family: monospace;">Credenciales Académicas</span>
-                      
-                      <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #e5e7eb;">
-                        <tr>
-                          <td style="padding: 6px 0; color: #6b7280; width: 35%; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Colegio:</td>
-                          <td style="padding: 6px 0; font-weight: 600; color: #ffffff;">${student.school}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding: 6px 0; color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Curso/Nivel:</td>
-                          <td style="padding: 6px 0; font-weight: 700; color: #818cf8;">Nivel ${student.level + 1}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding: 6px 0; color: #6b7280; font-weight: 600; text-transform: uppercase; font-size: 10px; letter-spacing: 0.05em;">Correo:</td>
-                          <td style="padding: 6px 0; font-family: monospace; color: #a5b4fc; font-weight: bold;">${cleanEmail}</td>
-                        </tr>
-                      </table>
-                    </div>
-
-                    <p style="color: #9ca3af;">Presioná el botón de abajo para activar tu cuenta escolar, configurar tu clave e ingresar al simulador de finanzas y lecciones virtuales:</p>
-
-                    <!-- CTA Button -->
-                    <div style="text-align: center; margin: 32px 0 28px 0;">
-                      <a href="${registerLink}" style="background: linear-gradient(135deg, #6366f1 0%, #4338ca 100%); color: #ffffff; padding: 14px 28px; border-radius: 12px; font-weight: 700; text-decoration: none; display: inline-block; font-size: 13px; box-shadow: 0 8px 20px rgba(99, 102, 241, 0.25); border: 1px solid #4f46e5; text-transform: uppercase; letter-spacing: 0.08em;">
-                        Comenzar Aprendizaje
-                      </a>
-                    </div>
-
-                    <!-- Copy-Paste helper -->
-                    <div style="border-top: 1px solid #1e1b4b; margin-top: 32px; padding-top: 20px;">
-                      <p style="color: #6b7280; font-size: 11px; margin-bottom: 8px; line-height: 1.4;">Si tenés problemas con el botón, podés copiar y pegar este enlace en tu navegador:</p>
-                      <p style="font-family: monospace; background-color: #060614; padding: 12px; border-radius: 10px; font-size: 11px; word-break: break-all; color: #6366f1; border: 1px solid #1e1b4b; margin: 0;">
-                        ${registerLink}
-                      </p>
-                    </div>
-                  </div>
-
-                  <!-- Professional Footer -->
-                  <div style="background-color: #060614; padding: 24px; text-align: center; border-top: 1px solid #1e1b4b;">
-                    <p style="color: #4b5563; font-size: 10px; margin: 0 0 6px 0; line-height: 1.5;">Este correo es de uso estrictamente educativo y automático para alumnos verificados de la red Fintly.</p>
-                    <p style="color: #6b7280; font-size: 10px; margin: 0; font-weight: 500;">&copy; 2026 Fintly Campus Virtual. Todos los derechos reservados.</p>
-                  </div>
-                </div>
-              </div>
-            `
-          },
-          createdAt: new Date().toISOString()
-        });
-        console.log(`Successfully queued invitation email document in Firestore 'mail' collection for: ${cleanEmail}`);
-      } else {
-        // Actualizar el perfil de usuario existente (colegio, nivel y nombre)
-        await setDoc(userProfileRef, {
-          name: student.name,
-          level: student.level,
-          school: student.school
-        }, { merge: true });
-        console.log(`Successfully updated existing user profile for: ${cleanEmail}`);
+      if (sub.school) {
+        resumen.yaTenian++;
+        continue;
       }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'students');
-    }
-  };
 
-  // Eliminar un alumno descatalogado de Firestore
-  const handleDeleteStudent = async (email: string) => {
-    const cleanEmail = email.toLowerCase();
+      const colegio = colegioPorCorreo.get(sub.studentEmail?.toLowerCase().trim() || '');
+      if (!colegio) {
+        resumen.sinAlumno++;
+        continue;
+      }
 
-    try {
-      const docId = cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_');
-      await deleteDoc(doc(db, 'students', docId));
-      await deleteDoc(doc(db, 'users', cleanEmail));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'students');
+      await setDoc(doc(db, 'submissions', d.id), { school: colegio }, { merge: true });
+      resumen.actualizadas++;
     }
+
+    console.log('Relleno de colegio en entregas:', resumen);
+    return resumen;
   };
 
   /**
@@ -1095,7 +1068,14 @@ export default function App() {
         const studentSnap = await getDoc(studentDocRef);
 
         const assignedLevel = updatedUser.level || 0;
-        const availableClassesCount = classes.filter(cl => cl.level === assignedLevel && !cl.isSyllabus && (cl.school?.toLowerCase() === finalSchool.toLowerCase() || !cl.school)).length;
+        // Solo las clases publicadas a SU colegio. Incluir las plantillas del
+        // syllabus (que no tienen colegio) le daba un total inflado de arranque.
+        const availableClassesCount = classes.filter(
+          (cl) =>
+            cl.level === assignedLevel &&
+            !cl.isSyllabus &&
+            cl.school?.toLowerCase() === finalSchool.toLowerCase()
+        ).length;
 
         const studentRecord: Student = {
           name: updatedUser.name,
@@ -1170,27 +1150,29 @@ export default function App() {
 
         {/* Pantallas del Campus Virtual con transiciones finas de animador */}
         <main className="flex-1 w-full">
-          <AnimatePresence mode="wait">
-            {/* Hasta que Firebase confirme quien sos no mostramos NINGUNA vista con rol.
-                Sin esto, el panel se pintaba a partir de localStorage, que es editable. */}
-            {!authInitialized && (
-              <motion.div
-                key="auth-loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex flex-col items-center justify-center min-h-[70vh] gap-4"
-              >
-                <span className="relative w-10 h-10">
-                  <span className="absolute inset-0 rounded-full border-2 border-violet-500/15" />
-                  <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 animate-spin-slow" />
-                </span>
-                <span className="text-xs text-slate-500 font-mono tracking-wide">Verificando sesion…</span>
-              </motion.div>
-            )}
+          {/*
+            Hasta que Firebase confirme quien sos no mostramos NINGUNA vista con
+            rol: el panel se pintaba a partir de localStorage, que es editable.
 
-            {authInitialized && currentView === 'login' && (
+            Esta espera va FUERA del AnimatePresence a proposito. Adentro, con
+            mode="wait", quedaba trabada: la pantalla de carga terminaba su
+            animacion de salida, se quedaba en el DOM con opacidad 0, y la vista
+            siguiente no llegaba a montarse nunca. Ese modo maneja un hijo por
+            vez y aca convivia con las cinco vistas condicionales.
+          */}
+          {!authInitialized ? (
+            <div className="flex flex-col items-center justify-center min-h-[70vh] gap-4">
+              <span className="relative w-10 h-10">
+                <span className="absolute inset-0 rounded-full border-2 border-violet-500/15" />
+                <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-violet-400 animate-spin-slow" />
+              </span>
+              <span className="text-xs text-slate-400 light:text-slate-600 font-mono tracking-wide">
+                Verificando sesión…
+              </span>
+            </div>
+          ) : (
+          <AnimatePresence mode="wait">
+            {currentView === 'login' && (
               <motion.div
                 key="login-screen"
                 initial={{ opacity: 0 }}
@@ -1202,7 +1184,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {authInitialized && currentView === 'dashboard' && currentUser && (
+            {currentView === 'dashboard' && currentUser && (
               <motion.div
                 key="dashboard-screen"
                 initial={{ opacity: 0, y: 15 }}
@@ -1219,7 +1201,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {authInitialized && currentView === 'classview' && currentUser && activeClassItem && (
+            {currentView === 'classview' && currentUser && activeClassItem && (
               <motion.div
                 key="classview-screen"
                 initial={{ opacity: 0, scale: 0.99 }}
@@ -1237,7 +1219,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {authInitialized && currentView === 'pausado' && currentUser && (
+            {currentView === 'pausado' && currentUser && (
               <motion.div
                 key="paused-screen"
                 initial={{ opacity: 0, scale: 0.96 }}
@@ -1288,7 +1270,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {authInitialized && currentView === 'progress' && currentUser && (
+            {currentView === 'progress' && currentUser && (
               <motion.div
                 key={`progress-screen-${homeResetKey}`}
                 initial={{ opacity: 0, y: 15 }}
@@ -1307,7 +1289,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {authInitialized && currentView === 'admin' && currentUser && (
+            {currentView === 'admin' && currentUser && (
               <motion.div
                 key={`admin-screen-${homeResetKey}`}
                 initial={{ opacity: 0, y: 15 }}
@@ -1325,11 +1307,13 @@ export default function App() {
                   onAssignClass={handleAssignClass}
                   onApproveUser={handleApproveUser}
                   onRenameSchool={handleRenameSchool}
+                  onBackfillSubmissionSchools={handleBackfillSubmissionSchools}
                   onDeleteUser={handleDeleteUser}
                 />
               </motion.div>
             )}
           </AnimatePresence>
+          )}
         </main>
       </div>
     </div>

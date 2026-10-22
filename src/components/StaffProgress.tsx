@@ -2,10 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   Users, Search, ArrowLeft, CheckCircle2, Award, 
-  MessageSquare, ChevronRight, ClipboardList, School
-} from 'lucide-react';
+  MessageSquare, ChevronRight, ClipboardList, AlertCircle } from 'lucide-react';
 import { Student, ActivitySubmission, ClassItem, User } from '../types';
-import { COURSES, ASSOCIATED_SCHOOLS } from '../data';
+import { COURSES, ASSOCIATED_SCHOOLS, normalizarNota } from '../data';
 
 interface StaffProgressProps {
   students: Student[];
@@ -41,7 +40,10 @@ export default function StaffProgress({
   onSaveSubmission
 }: StaffProgressProps) {
   // Aislamiento por colegio del directivo: si el directivo tiene un colegio asignado, se fija siempre a ese colegio
-  const directivoSchool = user.school || (ASSOCIATED_SCHOOLS[0]);
+  // Si el directivo no tiene colegio asignado NO lo mandamos al primero de la
+  // lista: veria datos de una institucion que no es la suya. Queda en vacio y
+  // la pantalla se lo dice.
+  const directivoSchool = user.school && ASSOCIATED_SCHOOLS.includes(user.school) ? user.school : '';
   const [selectedSchool, setSelectedSchool] = useState<string>(directivoSchool);
   const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -52,23 +54,22 @@ export default function StaffProgress({
   const [isSaving, setIsSaving] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
 
-  // Sincronizar si cambia el usuario o colegio asignado
+  // Sincronizar si cambia el usuario o colegio asignado.
+  //
+  // Valida contra ASSOCIATED_SCHOOLS igual que el inicializador de arriba. Sin
+  // esa validacion, un directivo con un colegio desactualizado en su registro
+  // (un nombre viejo previo a la migracion, o "Sin asignar") se saltaba el
+  // control y entraba al panel con la lista de alumnos vacia, en vez de ver el
+  // aviso de que todavia no tiene institucion vinculada.
   useEffect(() => {
-    if (user.school) {
-      setSelectedSchool(user.school);
-    }
+    setSelectedSchool(
+      user.school && ASSOCIATED_SCHOOLS.includes(user.school) ? user.school : ''
+    );
   }, [user.school]);
 
-  // Normalize legacy grades
-  const normalizeGrade = (raw?: string): 'Excelente' | 'Muy bien' | 'Bien' | 'Puede mejorar' | null => {
-    if (!raw) return null;
-    const clean = raw.trim().toLowerCase();
-    if (clean === 'excelente') return 'Excelente';
-    if (clean === 'muy bien' || clean === 'muy bueno') return 'Muy bien';
-    if (clean === 'bien') return 'Bien';
-    if (clean === 'puede mejorar' || clean === 'a mejorar') return 'Puede mejorar';
-    return null;
-  };
+  // La normalización de notas vive en data.ts: la usan también ClassView y
+  // cualquier otra pantalla que muestre una corrección.
+  const normalizeGrade = normalizarNota;
 
   useEffect(() => {
     if (selectedSubmission) {
@@ -113,80 +114,39 @@ export default function StaffProgress({
     return submissions.filter(sub => schoolStudentEmails.has(sub.studentEmail?.toLowerCase().trim()));
   };
 
+  // Un directivo SIN colegio asignado no ve nada.
+  //
+  // Antes esta rama le mostraba una tarjeta por cada uno de los seis colegios,
+  // con cantidad de alumnos, entregas pendientes y progreso promedio. O sea, un
+  // selector de instituciones ajenas. Un directivo pertenece a un colegio y a
+  // uno solo; si no lo tiene asignado, lo que corresponde es decirselo, no
+  // dejarlo elegir.
   if (!selectedSchool) {
     return (
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10">
-        <div className="mb-8">
-          <span className="text-[10px] uppercase font-bold text-violet-400 tracking-wider font-mono">
-            Portal Docente • Fintly Campus
+      <div className="max-w-xl mx-auto px-4 sm:px-6 py-16">
+        <div className="surface rounded-2xl p-8 text-center space-y-4">
+          <span className="w-14 h-14 rounded-full bg-amber-500/12 border border-amber-500/25 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-6 h-6 text-amber-400 light:text-amber-600" />
           </span>
-          <h1 className="font-sans text-2xl sm:text-3xl font-bold text-white light:text-neutral-900 mt-1 mb-2">
-            Mis Colegios Asignados
-          </h1>
-          <p className="text-gray-400 light:text-neutral-500 text-sm">
-            Seleccioná una institución para gestionar los niveles académicos y calificar alumnos.
-          </p>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {ASSOCIATED_SCHOOLS.map((school) => {
-            const schoolStudents = getStudentsOfSchool(school);
-            const schoolSubmissions = getSubmissionsOfSchool(school);
-            const pendingReg = schoolSubmissions.filter(sub => !sub.grade).length;
-            const avgProgress = schoolStudents.length > 0
-              ? Math.round((schoolStudents.reduce((acc, s) => acc + (s.progress / s.total), 0) / schoolStudents.length) * 100)
-              : 0;
+          <div className="space-y-2">
+            <h1 className="font-sans text-xl font-bold text-white light:text-neutral-900">
+              Todavía no tenés colegio asignado
+            </h1>
+            <p className="text-sm text-gray-400 light:text-neutral-600 leading-relaxed">
+              Tu cuenta está habilitada como directivo, pero falta vincularla a una
+              institución. Hasta que eso pase no podemos mostrarte alumnos ni entregas.
+            </p>
+          </div>
 
-            return (
-              <motion.div
-                key={school}
-                whileHover={{ scale: 1.01, y: -2 }}
-                onClick={() => setSelectedSchool(school)}
-                className="bg-neutral-900/60 light:bg-white border border-white/5 light:border-neutral-200 rounded-2xl p-6 cursor-pointer hover:border-violet-500/30 transition-all flex flex-col justify-between shadow-lg"
-              >
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="w-11 h-11 bg-violet-600/10 border border-violet-500/15 text-violet-400 rounded-xl flex items-center justify-center">
-                      <School className="w-5 h-5" />
-                    </div>
-                    {pendingReg > 0 ? (
-                      <span className="px-2.5 py-1 text-[10px] font-bold bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg animate-pulse uppercase">
-                        {pendingReg} {pendingReg === 1 ? 'Pendiente' : 'Pendientes'}
-                      </span>
-                    ) : (
-                      <span className="px-2.5 py-1 text-[10px] font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-lg uppercase">
-                        Al día
-                      </span>
-                    )}
-                  </div>
+          <div className="p-3.5 rounded-xl bg-white/[0.03] light:bg-neutral-50 border border-white/[0.06] light:border-neutral-200">
+            <p className="text-[12px] text-gray-400 light:text-neutral-600 leading-relaxed">
+              Escribile al equipo de Fintly para que te asignen tu colegio desde el
+              panel de administración.
+            </p>
+          </div>
 
-                  <div>
-                    <h3 className="font-sans text-lg font-semibold text-white light:text-neutral-900 leading-tight">
-                      {school}
-                    </h3>
-                    <p className="text-xs text-gray-400 light:text-neutral-500 mt-1">
-                      Gestioná el avance pedagógico de esta sede.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 pt-6 mt-6 border-t border-white/5 light:border-neutral-100 text-center">
-                  <div>
-                    <div className="text-[10px] font-mono font-bold uppercase text-gray-500">Alumnos</div>
-                    <div className="text-sm font-semibold text-white light:text-neutral-800 mt-1">{schoolStudents.length}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-mono font-bold uppercase text-gray-500">Respuestas</div>
-                    <div className="text-sm font-semibold text-white light:text-neutral-800 mt-1">{schoolSubmissions.length}</div>
-                  </div>
-                  <div>
-                    <div className="text-[10px] font-mono font-bold uppercase text-gray-500">Progreso</div>
-                    <div className="text-sm font-semibold text-emerald-400 light:text-emerald-600 mt-1">{avgProgress}%</div>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
+          <p className="text-[11px] text-gray-500 font-mono pt-1">{user.email}</p>
         </div>
       </div>
     );
@@ -370,7 +330,7 @@ export default function StaffProgress({
             {displayedStudents.length > 0 ? (
               <div className="divide-y divide-gray-800/40 light:divide-neutral-100 max-h-[480px] overflow-y-auto no-scrollbar">
                 {displayedStudents.map((s, idx) => {
-                  const pct = Math.round((s.progress / s.total) * 100);
+                  const pct = Math.round((s.progress / (s.total || 1)) * 100);
                   const isOk = s.status === 'ok';
 
                   return (
@@ -487,7 +447,7 @@ export default function StaffProgress({
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="text-[9px] font-mono font-bold tracking-widest text-violet-400 uppercase">
-                          Clase {sub.classWeek} • Actividad
+                          Módulo {sub.classModule ?? 1} · Clase {sub.classWeek} • Actividad
                         </span>
                         <h4 className="text-white light:text-neutral-900 text-xs font-bold mt-0.5">
                           {sub.studentEmail}
@@ -534,21 +494,30 @@ export default function StaffProgress({
                     <div className="flex justify-between items-start">
                       <div>
                         <span className="text-[9px] font-mono font-bold tracking-widest text-[#6c6c7e] uppercase">
-                          Clase {sub.classWeek} • Corregido
+                          Módulo {sub.classModule ?? 1} · Clase {sub.classWeek} • Corregido
                         </span>
                         <h4 className="text-white light:text-neutral-900 text-xs font-bold mt-0.5">
                           {sub.studentEmail}
                         </h4>
                       </div>
-                      <span className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-lg border ${
-                        sub.grade === 'Excelente'
-                          ? 'bg-emerald-950/30 border-emerald-500/25 text-emerald-400 light:bg-emerald-50 light:border-emerald-250 light:text-emerald-700'
-                          : sub.grade === 'Muy bueno' || sub.grade === 'Muy bien'
-                          ? 'bg-indigo-950/30 border-indigo-500/25 text-indigo-400 light:bg-indigo-50 light:border-indigo-250 light:text-indigo-700'
-                          : 'bg-amber-950/30 border-amber-500/25 text-amber-400 light:bg-amber-50 light:border-amber-250 light:text-amber-700'
-                      }`}>
-                        {sub.grade}
-                      </span>
+                      {/* Normalizamos antes de mostrar: una entrega vieja guardada
+                          como "Muy bueno" aparecia con ese texto en vez de "Muy bien". */}
+                      {(() => {
+                        const nota = normalizeGrade(sub.grade);
+                        const color =
+                          nota === 'Excelente'
+                            ? 'bg-emerald-950/30 border-emerald-500/25 text-emerald-400 light:bg-emerald-50 light:border-emerald-250 light:text-emerald-700'
+                            : nota === 'Muy bien'
+                            ? 'bg-indigo-950/30 border-indigo-500/25 text-indigo-400 light:bg-indigo-50 light:border-indigo-250 light:text-indigo-700'
+                            : nota === 'Bien'
+                            ? 'bg-violet-950/30 border-violet-500/25 text-violet-400 light:bg-violet-50 light:border-violet-250 light:text-violet-700'
+                            : 'bg-amber-950/30 border-amber-500/25 text-amber-400 light:bg-amber-50 light:border-amber-250 light:text-amber-700';
+                        return (
+                          <span className={`px-2.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-lg border ${color}`}>
+                            {nota ?? sub.grade}
+                          </span>
+                        );
+                      })()}
                     </div>
 
                     <div className="p-3 bg-black/10 light:bg-neutral-50 border border-white/5 light:border-neutral-100 rounded-xl text-xs text-gray-400 light:text-neutral-600 line-clamp-2">
@@ -596,7 +565,7 @@ export default function StaffProgress({
                   Calificación Pedagógica
                 </span>
                 <h3 className="text-white light:text-neutral-950 font-sans font-bold text-base mt-0.5">
-                  Nivel {selectedSubmission.classLevel} • Clase {selectedSubmission.classWeek}
+                  Nivel {selectedSubmission.classLevel} • Módulo {selectedSubmission.classModule ?? 1} · Clase {selectedSubmission.classWeek}
                 </h3>
               </div>
               <button

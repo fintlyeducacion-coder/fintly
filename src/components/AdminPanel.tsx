@@ -9,6 +9,7 @@ import {
 import { ClassItem, Student, ActivitySubmission, User } from '../types';
 import ClassModal from './ClassModal';
 import { COURSES, ASSOCIATED_SCHOOLS, CLASES_POR_MODULO } from '../data';
+import { entregaEsDeLaClase } from '../classKeys';
 
 interface AdminPanelProps {
   classes: ClassItem[];
@@ -22,6 +23,8 @@ interface AdminPanelProps {
   onDeleteUser?: (email: string) => void | Promise<void>;
   /** Migración: renombra un colegio en clases, usuarios y alumnos. */
   onRenameSchool?: (viejo: string, nuevo: string) => Promise<{ clases: number; usuarios: number; alumnos: number }>;
+  /** Migración: rellena el colegio en las entregas que se guardaron sin él. */
+  onBackfillSubmissionSchools?: () => Promise<{ actualizadas: number; yaTenian: number; sinAlumno: number }>;
 }
 
 export default function AdminPanel({
@@ -34,7 +37,8 @@ export default function AdminPanel({
   onAssignClass,
   onApproveUser,
   onDeleteUser,
-  onRenameSchool
+  onRenameSchool,
+  onBackfillSubmissionSchools
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<'negocio' | 'clases' | 'aprobaciones'>('negocio');
 
@@ -91,12 +95,9 @@ export default function AdminPanel({
     );
     const colegios = Array.from(new Set(copias.map((c) => c.school).filter(Boolean)));
 
-    const entregas = submissions.filter(
-      (sub) =>
-        sub.classLevel === cl.level &&
-        sub.classWeek === cl.week &&
-        (sub.classModule === undefined || sub.classModule === (cl.module ?? 1))
-    );
+    // Mismo criterio que usa el borrado real en App.tsx: si los dos no
+    // coinciden, el cartel anuncia una cantidad y se borra otra.
+    const entregas = submissions.filter((sub) => entregaEsDeLaClase(sub, cl));
 
     const lineas = [
       `Vas a eliminar la clase "${cl.title || 'sin título'}".`,
@@ -119,6 +120,27 @@ export default function AdminPanel({
     }
 
     return window.confirm(lineas.join('\n'));
+  };
+
+  const [rellenando, setRellenando] = useState(false);
+  const [resultadoRelleno, setResultadoRelleno] = useState<string | null>(null);
+
+  const ejecutarRelleno = async () => {
+    if (!onBackfillSubmissionSchools) return;
+    setRellenando(true);
+    setResultadoRelleno(null);
+    try {
+      const r = await onBackfillSubmissionSchools();
+      const partes = [`${r.actualizadas} entrega(s) actualizada(s)`];
+      if (r.yaTenian > 0) partes.push(`${r.yaTenian} ya tenían colegio`);
+      if (r.sinAlumno > 0) partes.push(`${r.sinAlumno} sin alumno asociado (quedaron sin tocar)`);
+      setResultadoRelleno(partes.join(' · '));
+    } catch (e: any) {
+      console.error('Falló el relleno de colegios en entregas:', e);
+      setResultadoRelleno('Error: ' + (e?.message || 'no se pudo completar'));
+    } finally {
+      setRellenando(false);
+    }
   };
 
   const ejecutarMigracion = async () => {
@@ -183,19 +205,19 @@ export default function AdminPanel({
 
   students.forEach(student => {
     const studentSchool = student.school?.toLowerCase() || '';
-    const dueForStudent = pastDeadlineClasses.filter(cl => 
-      cl.level === student.level && 
-      (cl.school?.toLowerCase() === studentSchool || !cl.school)
+    // Solo las clases publicadas a su colegio: las plantillas del syllabus no
+    // le corresponden a ningun alumno y distorsionaban la tasa de efectividad.
+    const dueForStudent = pastDeadlineClasses.filter(
+      (cl) => cl.level === student.level && cl.school?.toLowerCase() === studentSchool
     );
 
     totalExpectedDueSubmissions += dueForStudent.length;
 
     dueForStudent.forEach(cl => {
-      const studentSub = submissions.find(sub => 
-        sub.studentEmail.toLowerCase() === (student.email || '').toLowerCase() &&
-        sub.classLevel === cl.level &&
-        sub.classWeek === cl.week &&
-        (sub.classModule === undefined || sub.classModule === (cl.module ?? 1))
+      const studentSub = submissions.find(
+        (sub) =>
+          sub.studentEmail.toLowerCase() === (student.email || '').toLowerCase() &&
+          entregaEsDeLaClase(sub, cl)
       );
 
       if (studentSub) {
@@ -1176,6 +1198,36 @@ export default function AdminPanel({
                           : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300 light:text-emerald-700'
                       }`}>
                         {resultadoMigracion}
+                      </div>
+                    )}
+
+                    {/* ── Relleno de colegio en entregas viejas ── */}
+                    {onBackfillSubmissionSchools && (
+                      <div className="pt-3 mt-1 border-t border-white/5 light:border-neutral-200 space-y-2.5">
+                        <p className="text-[11px] text-gray-500 leading-relaxed max-w-2xl">
+                          Las entregas anteriores a octubre de 2026 se guardaron sin el colegio del
+                          alumno. Mientras falte ese dato no se pueden aislar por institución, ni en
+                          la consulta ni en las reglas de seguridad. Esto lo completa deduciéndolo
+                          del registro de cada alumno. Se corre una sola vez.
+                        </p>
+
+                        <button
+                          onClick={ejecutarRelleno}
+                          disabled={rellenando}
+                          className="px-4 h-9 text-xs font-semibold rounded-xl border border-violet-500/25 text-violet-400 light:text-violet-600 hover:bg-violet-500/10 cursor-pointer transition-colors disabled:opacity-40"
+                        >
+                          {rellenando ? 'Completando…' : 'Completar colegio en entregas'}
+                        </button>
+
+                        {resultadoRelleno && (
+                          <div className={`p-3 rounded-xl border text-[12px] ${
+                            resultadoRelleno.startsWith('Error')
+                              ? 'bg-rose-500/10 border-rose-500/25 text-rose-300 light:text-rose-700'
+                              : 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300 light:text-emerald-700'
+                          }`}>
+                            {resultadoRelleno}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

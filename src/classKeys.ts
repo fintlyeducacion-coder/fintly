@@ -71,3 +71,24 @@ export const idsHistoricos = (school: string | undefined, level: number, week: n
     `assigned_s${slugColegio(sinTildes.toLowerCase())}_l${level}_w${week}`,
   ];
 };
+
+/**
+ * ¿Una entrega pertenece a esta clase?
+ *
+ * Compara nivel, módulo y número de clase. Las entregas anteriores a octubre
+ * de 2026 no tienen `classModule`, porque el dato no existía; se cuentan como
+ * del módulo 1, que es el único que había en la práctica cuando se guardaron.
+ *
+ * El criterio está acá y no repetido en cada pantalla porque llegó a estar
+ * escrito en cinco lugares y se desincronizó: en algunos, una entrega sin
+ * módulo coincidía con CUALQUIER módulo. Como la "clase 1" existe en los
+ * cuatro, una sola entrega histórica inflaba el avance por cuatro, y al
+ * borrar una clase se arrastraban entregas de otro módulo.
+ */
+export const entregaEsDeLaClase = (
+  entrega: { classLevel: number; classModule?: number; classWeek: number },
+  clase: { level: number; module?: number; week: number }
+) =>
+  entrega.classLevel === clase.level &&
+  entrega.classWeek === clase.week &&
+  (entrega.classModule ?? 1) === (clase.module ?? 1);

@@ -15,14 +15,14 @@ const COURSE_ICONS: Record<string, LucideIcon> = {
   'vida-pro': Briefcase,
 };
 import { ClassItem, User, ActivitySubmission } from '../types';
-import { COURSES, UPCOMING_COURSES } from '../data';
-import { ordenEnNivel } from '../classKeys';
+import { COURSES, UPCOMING_COURSES, normalizarNota } from '../data';
+import { ordenEnNivel, entregaEsDeLaClase } from '../classKeys';
 
 interface Props {
   user: User;
   classes: ClassItem[];
   submissions: ActivitySubmission[];
-  onOpenClass: (level: number, week: number) => void;
+  onOpenClass: (level: number, module: number | undefined, week: number) => void;
 }
 
 /* ── Progress Ring ──────────────────────────────────────────────── */
@@ -89,13 +89,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
   const saludo     = hora < 13 ? 'Buen día' : hora < 20 ? 'Buenas tardes' : 'Buenas noches';
   
   // Una entrega corresponde a la clase si coinciden nivel, módulo y número.
-  // Las entregas viejas no tienen classModule: en ese caso no filtramos por módulo.
-  const coincide = (s: ActivitySubmission, cl: ClassItem) =>
-    s.classLevel === cl.level &&
-    s.classWeek === cl.week &&
-    (s.classModule === undefined || s.classModule === (cl.module ?? 1));
-
-  const submitted  = (cl: ClassItem) => mine.some(s => coincide(s, cl));
+  const submitted  = (cl: ClassItem) => mine.some(s => entregaEsDeLaClase(s, cl));
   
   // Regla de desbloqueo combinado:
   // (a) Ya llegó su unlockAt (o no tiene)
@@ -145,8 +139,12 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
     return null;
   };
 
-  const gradeOf = (cl: ClassItem) =>
-    mine.find(s => coincide(s, cl))?.grade;
+  // Normalizada, para que la nota diga lo mismo acá, en la clase y en el panel
+  // del docente: en la base hay correcciones viejas guardadas como "Muy bueno".
+  const gradeOf = (cl: ClassItem) => {
+    const cruda = mine.find(s => entregaEsDeLaClase(s, cl))?.grade;
+    return normalizarNota(cruda) ?? cruda;
+  };
 
   const visible = courseClasses.filter(cl => {
     if (filter === 'pending' && (!isOpen(cl) || submitted(cl))) return false;
@@ -254,7 +252,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
           {nextClass ? (
             <motion.button
               type="button"
-              onClick={() => onOpenClass(nextClass.level, nextClass.week)}
+              onClick={() => onOpenClass(nextClass.level, nextClass.module, nextClass.week)}
               whileHover={{ y: -3, scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
               className="surface rounded-2xl p-5 text-left flex flex-col justify-between cursor-pointer group relative overflow-hidden transition-all"
@@ -389,7 +387,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.035, duration: 0.28 }}
-                  onClick={() => open && onOpenClass(cl.level, cl.week)}
+                  onClick={() => open && onOpenClass(cl.level, cl.module, cl.week)}
                   className={`group flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-all duration-200 ${
                     done
                       ? 'bg-emerald-500/[0.04] border-emerald-500/[0.12] light:bg-emerald-50/60 light:border-emerald-200/60 cursor-pointer hover:bg-emerald-500/[0.07]'

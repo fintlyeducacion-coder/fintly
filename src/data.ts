@@ -1,10 +1,5 @@
-import { ClassItem } from './types';
+import { GradeType } from './types';
 
-/**
- * Colegios con convenio vigente. Es la ÚNICA fuente de verdad.
- * El nombre funciona como clave: las clases publicadas se vinculan por este string,
- * así que cambiar uno acá desvincula lo ya publicado a ese colegio en Firestore.
- */
 /**
  * Clases que tiene cada módulo. Un módulo dura un mes, con una clase por semana.
  *
@@ -18,6 +13,32 @@ export const CLASES_POR_MODULO = 4;
 /** Módulos por nivel. Cuatro módulos de un mes = un nivel por cuatrimestre. */
 export const MODULOS_POR_NIVEL = 4;
 
+/**
+ * Lleva una nota guardada a la escala canónica de cuatro valores.
+ *
+ * Existe porque en la base hay notas de versiones anteriores con otra
+ * redacción ("Muy bueno", "A mejorar"). Sin normalizar, el docente veía un
+ * texto y el alumno otro para la misma corrección.
+ *
+ * Devuelve null si no reconoce el valor, para que quien llame decida qué
+ * mostrar en vez de inventar una nota.
+ */
+export function normalizarNota(raw?: string): GradeType | null {
+  if (!raw) return null;
+  const limpio = raw.trim().toLowerCase();
+  if (limpio === 'excelente') return 'Excelente';
+  if (limpio === 'muy bien' || limpio === 'muy bueno') return 'Muy bien';
+  if (limpio === 'bien') return 'Bien';
+  if (limpio === 'puede mejorar' || limpio === 'a mejorar') return 'Puede mejorar';
+  return null;
+}
+
+/**
+ * Colegios con convenio vigente. Es la ÚNICA fuente de verdad.
+ * El nombre funciona como clave: las clases publicadas se vinculan por este string,
+ * así que cambiar uno acá desvincula lo ya publicado a ese colegio en Firestore.
+ * Para cambiarlo hay que usar la herramienta de migración del panel de admin.
+ */
 export const ASSOCIATED_SCHOOLS = [
   'Faro Benavidez',
   'Faro Escobar',
@@ -103,47 +124,9 @@ export const UPCOMING_COURSES = [
   },
 ];
 
-export const DEFAULT_CLASSES: ClassItem[] = [
-  {
-    level: 0,
-    module: 1,
-    week: 1,
-    title: '¿Qué es el Dinero y Cómo Funciona?',
-    unlockAt: '2026-01-01T00:00',
-    deadline: '2026-12-31T23:59',
-    text: '<h3>1. Introducción al Dinero</h3><p>El dinero es un medio de intercambio que facilita el comercio de bienes y servicios.</p><h3>2. Funciones Principales</h3><ul><li>Medio de cambio</li><li>Unidad de cuenta</li><li>Depósito de valor</li></ul>',
-    videoId: '',
-    slidesUrl: '',
-    actTitle: 'Tu primer registro de gastos',
-    actDesc: 'Anota durante 3 días todos los gastos que observes en tu rutina y categorízalos entre necesarios y prescindibles.',
-    isSyllabus: true,
-  },
-  {
-    level: 0,
-    module: 1,
-    week: 2,
-    title: 'La Regla 50/30/20 y el Presupuesto Personal',
-    unlockAt: '2026-01-01T00:00',
-    deadline: '2026-12-31T23:59',
-    text: '<h3>1. La Regla 50/30/20</h3><p>Una fórmula simple para distribuir tus ingresos:</p><ul><li><strong>50% Necesidades</strong></li><li><strong>30% Deseos</strong></li><li><strong>20% Ahorro</strong></li></ul>',
-    videoId: '',
-    slidesUrl: '',
-    actTitle: 'Armado de presupuesto simulado',
-    actDesc: 'Con un ingreso ficticio de $100.000, diseña una distribución mensual aplicando la regla 50/30/20.',
-    isSyllabus: true,
-  },
-  {
-    level: 1,
-    module: 1,
-    week: 1,
-    title: 'Inflación y Poder Adquisitivo',
-    unlockAt: '2026-01-01T00:00',
-    deadline: '2026-12-31T23:59',
-    text: '<h3>1. ¿Qué es la inflación?</h3><p>Es el aumento generalizado y sostenido de los precios en el tiempo.</p>',
-    videoId: '',
-    slidesUrl: '',
-    actTitle: 'Cálculo de impacto inflacionario',
-    actDesc: 'Investiga el precio de 3 productos del supermercado y calcula cuánto costarían con una inflación anual del 50%.',
-    isSyllabus: true,
-  }
-];
+// Se elimino DEFAULT_CLASSES.
+//
+// Eran tres clases de ejemplo que usaba la siembra automatica. Esa siembra se
+// quito porque publicaba contenido de muestra a los seis colegios reales ante
+// cualquier lectura vacia de Firestore. Sin ella, el arreglo no lo importaba
+// nadie. El contenido real se carga desde la Biblioteca del panel.

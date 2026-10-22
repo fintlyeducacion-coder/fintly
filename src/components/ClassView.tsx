@@ -6,7 +6,8 @@ import {
 } from 'lucide-react';
 import { ClassItem, User, ActivitySubmission } from '../types';
 import { sanitizeHtml } from '../sanitize';
-import { COURSES } from '../data';
+import { entregaEsDeLaClase } from '../classKeys';
+import { COURSES, normalizarNota } from '../data';
 
 /* ── Confetti ─────────────────────────────────────────────────── */
 const PARTICLES = ['🎉', '🌟', '💸', '🚀', '🔥', '👏', '🧠', '💼'];
@@ -78,18 +79,18 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
   const [errorEnvio,    setErrorEnvio]    = useState<string | null>(null);
   const [draftBanner,   setDraftBanner]   = useState(false);
 
-  const existing  = submissions.find(s =>
-    s.classLevel === classItem.level &&
-    s.classWeek === classItem.week &&
-    (s.classModule === undefined || s.classModule === (classItem.module ?? 1)) &&
-    s.studentEmail === user.email
+  const existing  = submissions.find(
+    (s) => entregaEsDeLaClase(s, classItem) && s.studentEmail === user.email
   );
   const draftKey  = `draft_${user.email}_${classItem.level}_${classItem.week}`;
   const now       = new Date();
   const overdue   = !!(classItem.deadline && now > new Date(classItem.deadline));
   const course    = COURSES.find(c => c.id === classItem.level);
   const wordCount = response.trim() ? response.trim().split(/\s+/).length : 0;
-  const gradeCls  = existing?.grade ? (GRADE_COLORS[existing.grade] ?? 'bg-violet-600/90 border-violet-500/50 text-white') : '';
+  // Normalizamos para que el alumno vea exactamente la misma nota que puso el
+  // docente: en la base hay correcciones viejas guardadas como "Muy bueno".
+  const notaMostrada = normalizarNota(existing?.grade) ?? existing?.grade;
+  const gradeCls  = notaMostrada ? (GRADE_COLORS[notaMostrada] ?? 'bg-violet-600/90 border-violet-500/50 text-white') : '';
 
   useEffect(() => {
     if (existing) { setResponse(''); setDraftBanner(false); return; }
@@ -321,7 +322,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
                           Corrección del docente
                         </span>
                         <span className={`px-3 py-1 text-[11px] font-bold rounded-lg border ${gradeCls}`}>
-                          {existing.grade}
+                          {notaMostrada}
                         </span>
                       </div>
                       {existing.feedback && (
