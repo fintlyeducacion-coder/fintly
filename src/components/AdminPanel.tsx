@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { ClassItem, Student, ActivitySubmission, User } from '../types';
 import ClassModal from './ClassModal';
-import { COURSES, ASSOCIATED_SCHOOLS } from '../data';
+import { COURSES, ASSOCIATED_SCHOOLS, CLASES_POR_MODULO } from '../data';
 
 interface AdminPanelProps {
   classes: ClassItem[];
@@ -256,7 +256,7 @@ export default function AdminPanel({
     );
     const usedWeeks = moduleClasses.map(cl => cl.week);
     let nextWeek = 1;
-    for (let w = 1; w <= 8; w++) {
+    for (let w = 1; w <= CLASES_POR_MODULO; w++) {
       if (!usedWeeks.includes(w)) {
         nextWeek = w;
         break;

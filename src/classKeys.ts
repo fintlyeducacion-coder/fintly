@@ -1,3 +1,5 @@
+import { CLASES_POR_MODULO } from './data';
+
 /**
  * classKeys.ts
  * Construcción de los IDs de documento de Firestore. Fuente única.
@@ -9,7 +11,7 @@
  *     syllabus_l0_w1     <- clase 1 del módulo 2  ¡MISMO ID!
  *
  * Como se guardan con setDoc sin merge, la segunda borraba la primera en silencio.
- * Con 4 módulos de 8 clases por nivel, eso significaba perder 3 de cada 4 clases.
+ * Con 4 módulos por nivel, eso significaba perder 3 de cada 4 clases.
  *
  * Ahora el módulo forma parte de la clave y nada se pisa.
  */
@@ -50,12 +52,13 @@ export const submissionIdExistente = (
     : `${slugEmail(email)}_l${level}_m${module}_w${week}`;
 
 /**
- * Posición absoluta de una clase dentro de su nivel: módulo 1 clases 1-8, módulo 2 clases 9-16, etc.
+ * Posición absoluta de una clase dentro de su nivel: el módulo 1 ocupa los primeros
+ * lugares, el 2 los siguientes, y así. Depende de CLASES_POR_MODULO.
  * Sirve para ordenar y para el desbloqueo secuencial, que si no interpreta
  * cuatro "clase 1" distintas como si fueran la misma.
  */
 export const ordenEnNivel = (module: number | undefined, week: number) =>
-  (mod(module) - 1) * 8 + week;
+  (mod(module) - 1) * CLASES_POR_MODULO + week;
 
 /** Variantes históricas de un ID, para poder borrar documentos viejos. */
 export const idsHistoricos = (school: string | undefined, level: number, week: number): string[] => {

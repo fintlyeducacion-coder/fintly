@@ -310,7 +310,7 @@ export default function App() {
 
     /**
      * Cada rol pide SOLO lo que necesita. Antes se leía la colección entera:
-     * con 128 clases publicadas a 6 colegios son ~900 documentos que bajaba
+     * con el curso completo publicado a 6 colegios son cientos de documentos que bajaba
      * hasta un alumno que solo usa 32 de ellos.
      *
      * Las clases del syllabus no tienen campo 'school', así que filtrar por

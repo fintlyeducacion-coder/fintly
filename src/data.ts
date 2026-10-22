@@ -5,6 +5,19 @@ import { ClassItem } from './types';
  * El nombre funciona como clave: las clases publicadas se vinculan por este string,
  * así que cambiar uno acá desvincula lo ya publicado a ese colegio en Firestore.
  */
+/**
+ * Clases que tiene cada módulo. Un módulo dura un mes, con una clase por semana.
+ *
+ * Cambió de 8 a 4 en octubre de 2026, cuando los módulos pasaron de durar
+ * dos meses a uno. Está acá y no suelto en el código porque interviene en el
+ * orden de las clases dentro de un nivel y en los huecos libres de la
+ * Biblioteca: si queda desparejo, las clases se mezclan entre módulos.
+ */
+export const CLASES_POR_MODULO = 4;
+
+/** Módulos por nivel. Cuatro módulos de un mes = un nivel por cuatrimestre. */
+export const MODULOS_POR_NIVEL = 4;
+
 export const ASSOCIATED_SCHOOLS = [
   'Faro Benavidez',
   'Faro Escobar',
