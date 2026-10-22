@@ -75,6 +75,52 @@ export default function AdminPanel({
   /** Los que están en los datos pero ya no figuran en la lista oficial. */
   const colegiosHuerfanos = colegiosEnDatos.filter(c => !ASSOCIATED_SCHOOLS.includes(c));
 
+  /**
+   * Borrar una clase es irreversible y arrastra cosas que no son obvias:
+   * sus copias publicadas en cada colegio y las entregas ya hechas por los
+   * alumnos. Sin copias de seguridad en Firestore, eso no se recupera.
+   * Por eso mostramos los números reales antes de hacer nada.
+   */
+  const confirmarBorradoClase = (cl: ClassItem) => {
+    const copias = classes.filter(
+      (c) =>
+        !c.isSyllabus &&
+        c.level === cl.level &&
+        c.week === cl.week &&
+        (c.module ?? 1) === (cl.module ?? 1)
+    );
+    const colegios = Array.from(new Set(copias.map((c) => c.school).filter(Boolean)));
+
+    const entregas = submissions.filter(
+      (sub) =>
+        sub.classLevel === cl.level &&
+        sub.classWeek === cl.week &&
+        (sub.classModule === undefined || sub.classModule === (cl.module ?? 1))
+    );
+
+    const lineas = [
+      `Vas a eliminar la clase "${cl.title || 'sin título'}".`,
+      '',
+      'Esto borra:',
+      '  · la clase de la Biblioteca',
+    ];
+
+    if (colegios.length > 0) {
+      lineas.push(`  · sus copias publicadas en ${colegios.length} colegio(s): ${colegios.join(', ')}`);
+    }
+    if (entregas.length > 0) {
+      lineas.push(`  · ${entregas.length} entrega(s) de alumnos, con sus notas y devoluciones`);
+    }
+
+    lineas.push('', 'No se puede deshacer.');
+
+    if (entregas.length > 0) {
+      lineas.push('', 'OJO: hay trabajo de alumnos que se va a perder para siempre.');
+    }
+
+    return window.confirm(lineas.join('\n'));
+  };
+
   const ejecutarMigracion = async () => {
     if (!onRenameSchool || !migrarDe.trim() || !migrarA.trim()) return;
     setMigrando(true);
@@ -675,7 +721,7 @@ export default function AdminPanel({
                             Editar
                           </button>
                           <button
-                            onClick={() => onDeleteClass(cl.level, cl.week, undefined, cl.id, cl.module)}
+                            onClick={() => { if (confirmarBorradoClase(cl)) onDeleteClass(cl.level, cl.week, undefined, cl.id, cl.module); }}
                             className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 cursor-pointer"
                             title="Eliminar clase"
                           >

@@ -836,6 +836,23 @@ export default function App() {
         await deleteDoc(doc(db, 'classes', viejo)).catch(() => {});
       }
 
+      // 3b. Si borramos la plantilla de la Biblioteca, se van también sus copias
+      // publicadas en cada colegio. Antes quedaban huérfanas: la clase desaparecía
+      // del panel pero los alumnos la seguían viendo.
+      if (!school) {
+        const copias = classes.filter(
+          (c) =>
+            !c.isSyllabus &&
+            c.level === level &&
+            c.week === week &&
+            (c.module ?? 1) === (module ?? 1)
+        );
+        for (const copia of copias) {
+          const idCopia = copia.id || assignedId(copia.school || '', copia.level, copia.module, copia.week);
+          await deleteDoc(doc(db, 'classes', idCopia)).catch(() => {});
+        }
+      }
+
       // 4. Las entregas de esa clase
       const entregasDeLaClase = submissions.filter((sub) => {
         // Las entregas viejas no tienen classModule: si falta, no filtramos por módulo
