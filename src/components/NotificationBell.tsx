@@ -6,7 +6,7 @@ import { ClassItem, User } from '../types';
 interface Props {
   user: User;
   classes: ClassItem[];
-  onOpenClass: (level: number, week: number) => void;
+  onOpenClass: (level: number, module: number | undefined, week: number) => void;
 }
 
 const classKey = (cl: ClassItem) => `${cl.level}_${cl.module ?? 0}_${cl.week}`;
@@ -80,7 +80,7 @@ export default function NotificationBell({ user, classes, onOpenClass }: Props) 
     localStorage.setItem(storageKey, JSON.stringify(next));
     setSeen(next);
     setOpen(false);
-    onOpenClass(cl.level, cl.week);
+    onOpenClass(cl.level, cl.module, cl.week);
   };
 
   const fmt = (d?: string) =>
