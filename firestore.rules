@@ -66,23 +66,39 @@ service cloud.firestore {
       return isSignedIn() && emailOf(request.auth) != "" && emailOf(request.auth) == email.lower();
     }
 
-    // ── 1. Prueba de conexión ────────────────────────────────────
-    match /test/{documentId} {
-      allow read: if isSignedIn();
-    }
-
-    // ── 2. Usuarios ──────────────────────────────────────────────
+    // ── 1. Usuarios ──────────────────────────────────────────────
+    //
+    // Acá vive el control de acceso entero: el campo 'role' de este documento
+    // decide todo lo demás. Por eso NINGUNA rama de escritura puede quedar en
+    // 'isStaff()': eso incluye a los directivos, y un directivo que escribe
+    // sobre users se pone 'admin' solo. Escribe el admin, o el dueño del
+    // documento con restricciones.
     match /users/{email} {
-      allow read: if isSignedIn() && (isOwner(email) || isStaff());
-      allow create: if (isSignedIn() && isOwner(email) &&
-                    (request.resource.data.role in ['alumno', 'pausado'] ||
-                     (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'))) || isStaff();
-      allow update: if (isOwner(email) && (request.resource.data.role == resource.data.role ||
-                    (email.lower() == 'fintlyeducacion@gmail.com' && request.resource.data.role == 'admin'))) || isStaff();
-      allow delete: if isStaff();
+      // Cada uno lee el suyo. Antes esto era 'isStaff()', así que un directivo
+      // se bajaba nombre, mail, rol, colegio y nivel de TODOS: de los alumnos
+      // de los otros cinco colegios, de los demás directivos y del admin.
+      allow read: if isSignedIn() && (isOwner(email) || esAdmin());
+
+      // Una cuenta nueva SÓLO puede nacer 'pausado'. Antes esta regla aceptaba
+      // 'alumno', así que cualquiera con una cuenta de Google creaba su propio
+      // documento ya aprobado, con el colegio que quisiera, y se saltaba la
+      // aprobación entera. Los dueños entran por esAdmin() (esPropietario).
+      allow create: if esAdmin() ||
+                    (isSignedIn() && isOwner(email) &&
+                     request.resource.data.role == 'pausado');
+
+      // El dueño puede corregir su nombre, nada más. 'role', 'school' y 'level'
+      // quedan clavados: antes sólo se clavaba 'role', y con eso un alumno se
+      // cambiaba de colegio y pasaba a leer el contenido de otra institución.
+      allow update: if esAdmin() ||
+                    (isOwner(email) &&
+                     !request.resource.data.diff(resource.data)
+                        .affectedKeys().hasAny(['role', 'school', 'level']));
+
+      allow delete: if esAdmin();
     }
 
-    // ── 3. Clases ────────────────────────────────────────────────
+    // ── 2. Clases ────────────────────────────────────────────────
     //
     // Antes: "allow read: if isSignedIn()". Cualquiera con una cuenta de Google
     // podía leer el curso completo, incluso sin estar aprobado todavía.
@@ -93,31 +109,65 @@ service cloud.firestore {
     match /classes/{classId} {
       allow read: if esAdmin() ||
                      (esAprobado() && resource.data.school == colegioPropio());
-      allow write: if isStaff();
+
+      // El contenido lo crea y edita SOLO el admin. Antes era 'isStaff()', así
+      // que cualquier directivo escribía y borraba clases de cualquier colegio,
+      // incluidas las plantillas del syllabus. Ojo: 'write' incluye 'delete',
+      // y sin backups un borrado no tiene vuelta atrás.
+      allow write: if esAdmin();
     }
 
-    // ── 4. Alumnos ───────────────────────────────────────────────
+    // ── 3. Alumnos ───────────────────────────────────────────────
     match /students/{studentId} {
+      // PENDIENTE: este 'isStaff()' deja que un directivo lea los alumnos de
+      // los seis colegios. No se puede apretar todavía: falta correr el relleno
+      // de 'school' en las entregas desde el panel. Apretar antes deja a los
+      // directivos sin ver a sus propios alumnos.
+      //
+      // La cláusula 'resource == null' permite enumerar correos (se distingue
+      // "no existe" de "existe y no es tuyo"). Se deja a propósito: el listener
+      // del alumno sobre su propio registro escucha un documento que todavía
+      // puede no existir, y sin esto ningún alumno nuevo podría entrar.
       allow read: if isStaff() || (isSignedIn() && (resource == null || resource.data.email.lower() == emailOf(request.auth)));
+
+      // 'isStaff()' acá es necesario: la sincronización de progreso corre en el
+      // navegador del directivo y reescribe los registros de sus alumnos.
       allow create: if isStaff() || (isSignedIn() && request.resource.data.email.lower() == emailOf(request.auth));
       allow update: if isStaff() || (isSignedIn() && resource.data.email.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'school']));
-      allow delete: if isStaff();
+
+      // Borrar sí es sólo del admin. Antes cualquier directivo podía borrar a
+      // los alumnos de los seis colegios, sin backups de los que recuperarlos.
+      // La segunda rama deja que admin y directivo limpien su PROPIO registro
+      // de alumno al entrar, que es lo que hace la app al iniciar sesión.
+      allow delete: if esAdmin() ||
+                    (isSignedIn() && resource.data.email.lower() == emailOf(request.auth));
     }
 
-    // ── 5. Entregas ──────────────────────────────────────────────
+    // ── 4. Entregas ──────────────────────────────────────────────
     //
     // El alumno puede crear y editar su entrega mientras NO esté corregida.
     // Una vez que tiene nota queda congelada: antes podía reescribir el texto
     // después de recibir la devolución, dejando una nota que no correspondía
     // a lo que el docente había leído.
     match /submissions/{submissionId} {
-      allow get: if isStaff() || (isSignedIn() && (resource == null || resource.data.studentEmail.lower() == emailOf(request.auth)));
+      // Sin 'resource == null': acá nadie lee un documento que pueda no existir,
+      // así que la cláusula sólo servía para enumerar quién entregó qué.
+      allow get: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth));
+
+      // PENDIENTE, igual que en students: depende del relleno de 'school'.
       allow list: if isStaff() || (isSignedIn() && resource.data.studentEmail.lower() == emailOf(request.auth));
 
       allow create: if isStaff() ||
                     (isSignedIn() &&
                      request.resource.data.studentEmail.lower() == emailOf(request.auth) &&
                      !request.resource.data.keys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']) &&
+                     // El colegio de la entrega lo escribe el alumno. Si viene,
+                     // tiene que ser el suyo: cuando las lecturas se aten al
+                     // colegio, poder mentirlo metería la entrega en la bandeja
+                     // de otra institución. Se permite que falte, porque las
+                     // entregas viejas no lo traen.
+                     (!('school' in request.resource.data) ||
+                      request.resource.data.school == colegioPropio()) &&
                      request.resource.data.responseText.size() <= 20000);
 
       allow update: if isStaff() ||
@@ -127,13 +177,20 @@ service cloud.firestore {
                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['grade', 'feedback', 'correctedBy', 'correctedAt']) &&
                      request.resource.data.responseText.size() <= 20000);
 
-      allow delete: if isStaff();
+      // Borrar entregas es sólo del admin, y pasa al borrar una clase. Antes
+      // cualquier directivo podía borrar las entregas de los seis colegios.
+      allow delete: if esAdmin();
     }
 
-    // ── 6. Cola de correos ───────────────────────────────────────
+    // ── 5. Cola de correos ──────────────────────────────────────────
+    //
+    // Alimenta la extensión Trigger Email: lo que se escriba acá sale como
+    // correo desde el dominio de Fintly. Antes aceptaba 'isStaff()', así que
+    // un directivo podía encolar un mail arbitrario, a cualquier destinatario,
+    // firmado por Fintly. Hoy no hay código que escriba acá.
     match /mail/{mailId} {
-      allow read: if isStaff();
-      allow create: if isStaff();
+      allow read: if esAdmin();
+      allow create: if esAdmin();
       allow update, delete: if false;
     }
   }

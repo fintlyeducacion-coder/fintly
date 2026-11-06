@@ -199,15 +199,22 @@ export default function App() {
               const studentSnap = await getDoc(doc(db, 'students', studentDocId));
               if (studentSnap.exists()) {
                 const stData = studentSnap.data() as Student;
+                // Nace 'pausado', no 'alumno'.
+                //
+                // Esta rama se usa cuando existe el registro en 'students' pero
+                // falta el de 'users'. Antes se auto-asignaba 'alumno', y las
+                // reglas lo aceptaban: eso era el agujero por el que cualquiera
+                // con una cuenta de Google se aprobaba solo, eligiendo colegio.
+                // Ahora las reglas sólo dejan nacer 'pausado'; si el alumno ya
+                // estaba aprobado, el admin lo vuelve a habilitar con un clic.
                 userProfile = {
                   email: cleanEmail,
                   name: stData.name,
-                  role: 'alumno',
+                  role: 'pausado',
                   initials: stData.initials || stData.name[0].toUpperCase(),
                   level: stData.level,
                   school: stData.school || SIN_ASIGNAR
                 };
-                // Guardar el perfil en 'users' para habilitar logins híbridos en el futuro
                 await setDoc(doc(db, 'users', cleanEmail), userProfile);
               }
             } catch (e) {
