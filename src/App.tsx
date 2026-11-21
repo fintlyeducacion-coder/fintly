@@ -4,7 +4,7 @@
  * Totalmente integrado con Firebase Auth y Firestore Database para persistencia y seguridad
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ASSOCIATED_SCHOOLS, SIN_ASIGNAR, COLEGIO_INTERNO } from './data';
 import { ClassItem, User, Student, ActivitySubmission } from './types';
@@ -35,6 +35,7 @@ import {
 import { handleFirestoreError, OperationType } from './firestore-errors';
 import { syllabusId, assignedId, submissionId, submissionIdExistente, idsHistoricos, entregaEsDeLaClase } from './classKeys';
 import { Clock } from 'lucide-react';
+import { calcularProgresos, construirRecorrido, sePuedeAbrir } from './lib/recorrido';
 
 // ─── DEV BYPASS ──────────────────────────────────────────────────────────────
 // Poner en null para restaurar el login normal
@@ -300,7 +301,12 @@ export default function App() {
 
   // --- 3. ESCUCHAR CLASES REAL-TIME COMPLETAS ---
   useEffect(() => {
-    if (!currentUser || !authInitialized) return;
+    if (!currentUser || !authInitialized) {
+      // Sin sesión no queda nada en memoria: la cuenta que entre después en
+      // este navegador no ve, ni por un instante, los datos de la anterior.
+      setClasses([]);
+      return;
+    }
 
     // Una cuenta pendiente de aprobación no accede al contenido.
     if (currentUser.role === 'pausado') {
@@ -368,7 +374,10 @@ export default function App() {
 
   // --- 4. ESCUCHAR SUBMISSIONS REAL-TIME (SEGÚN ROL) ---
   useEffect(() => {
-    if (!currentUser || !authInitialized) return;
+    if (!currentUser || !authInitialized) {
+      setSubmissions([]);
+      return;
+    }
 
     let submissionsQuery;
     if (currentUser.role === 'admin' || currentUser.role === 'directivo') {
@@ -494,7 +503,10 @@ export default function App() {
 
   // --- 5. ESCUCHAR ESTUDIANTES REAL-TIME ---
   useEffect(() => {
-    if (!currentUser || !authInitialized) return;
+    if (!currentUser || !authInitialized) {
+      setStudentsByState([]);
+      return;
+    }
 
     // SI NO ES STAFF, SOLO ESCUCHAR SU PROPIO REGISTRO DE ALUMNO (EVITA ERROR DE PERMISOS DE COLECCIÓN COMPLETA)
     if (currentUser.role !== 'admin' && currentUser.role !== 'directivo') {
@@ -589,88 +601,39 @@ export default function App() {
     return () => clearTimeout(t);
   }, [theme]);
 
-  // Mantener actualizado el progreso de cada estudiante basándose en las entregas reales en la base de datos
-  useEffect(() => {
-    if (classes.length === 0 || studentsByState.length === 0) return;
-    if (!currentUser) return;
+  /**
+   * Avance de cada alumno, calculado en memoria a partir de clases y entregas.
+   *
+   * Antes cada navegador lo recalculaba y lo escribía en Firestore. El de un
+   * directivo sólo tiene las clases de su colegio, así que a los alumnos de
+   * los otros colegios les guardaba "0 de 0" encima del valor correcto; el
+   * navegador del admin lo volvía a corregir, y así sin fin. Calculado acá no
+   * escribe nada y no se puede desincronizar.
+   */
+  const studentsConProgreso = useMemo(
+    () => calcularProgresos(studentsByState, classes, submissions),
+    [studentsByState, classes, submissions]
+  );
 
-    const now = new Date();
-
-    // La correspondencia entrega <-> clase vive en classKeys.ts, junto al
-    // resto de la identidad de una clase.
-    const correspondeA = entregaEsDeLaClase;
-
-    const updateStudentProgressesOnServer = async () => {
-      for (const student of studentsByState) {
-        // Sin correo no hay a quién atribuirle el progreso. Antes caía en un
-        // fallback a 'alumno@fintly.pro' y le escribía el progreso de este
-        // alumno encima del documento de esa cuenta de prueba.
-        if (!student.email) continue;
-
-        const studentEmail = student.email;
-        const studentSchool = student.school || SIN_ASIGNAR;
-
-        const studentSubmissions = submissions.filter(
-          (sub) => sub.studentEmail.toLowerCase() === studentEmail.toLowerCase()
-        );
-
-        // Las clases del alumno son SOLO las publicadas a su colegio.
-        // El filtro anterior incluía "|| !cl.school", o sea las plantillas del
-        // syllabus, que en el navegador del staff vienen todas: le inflaba el
-        // total a cada alumno y le bajaba el porcentaje de avance.
-        const courseClasses = classes.filter(
-          (cl) =>
-            cl.level === student.level &&
-            !cl.isSyllabus &&
-            cl.school?.toLowerCase() === studentSchool.toLowerCase()
-        );
-
-        const totalClassesCount = courseClasses.length;
-
-        // Contamos solo las entregas que corresponden a una clase suya. Antes
-        // era studentSubmissions.length a secas, así que una entrega de otro
-        // nivel le sumaba avance en este.
-        const progress = courseClasses.filter((cl) =>
-          studentSubmissions.some((s) => correspondeA(s, cl))
-        ).length;
-
-        // Semáforo: de las clases cuyo plazo ya venció, cuántas entregó.
-        const overdueClasses = courseClasses.filter(
-          (cl) => cl.deadline && now > new Date(cl.deadline)
-        );
-        const completedOverdueCount = overdueClasses.filter((cl) =>
-          studentSubmissions.some((s) => correspondeA(s, cl))
-        ).length;
-
-        const status =
-          overdueClasses.length === 0 || completedOverdueCount >= overdueClasses.length
-            ? 'ok'
-            : 'warn';
-
-        if (
-          student.progress !== progress ||
-          student.total !== totalClassesCount ||
-          student.status !== status
-        ) {
-          try {
-            const studentDocId = studentEmail.toLowerCase().replace(/[^a-zA-Z0-9_.-]/g, '_');
-            await setDoc(
-              doc(db, 'students', studentDocId),
-              { ...student, progress, total: totalClassesCount, status },
-              { merge: true }
-            );
-          } catch (e) {
-            console.warn('Could not sync student progress recalculation:', e);
-          }
-        }
-      }
-    };
-
-    updateStudentProgressesOnServer();
-  }, [submissions, classes, studentsByState]);
+  /**
+   * El recorrido del alumno con la misma regla de desbloqueo que su panel.
+   * Lo usan la campanita y la apertura de clases: antes la campanita dejaba
+   * entrar a clases que el panel mostraba con candado.
+   */
+  const pasosAlumno = useMemo(
+    () =>
+      currentUser?.role === 'alumno'
+        ? construirRecorrido(classes, submissions, currentUser)
+        : [],
+    [currentUser, classes, submissions]
+  );
+  const clasesQuePuedeAbrir = useMemo(
+    () => pasosAlumno.filter(sePuedeAbrir).map((p) => p.clase),
+    [pasosAlumno]
+  );
 
   // --- MANDAR AL INGRESO DE GOOGLE (REAL) ---
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async (): Promise<boolean> => {
     setAuthError('');
     setCurrentUser(null);
 
@@ -685,16 +648,17 @@ export default function App() {
 
     try {
       await signInWithPopup(auth, googleProvider);
+      return true;
     } catch (e: any) {
       // El usuario cerró el popup a propósito: no es un error que haya que mostrar.
-      if (e?.code === 'auth/popup-closed-by-user') return;
+      if (e?.code === 'auth/popup-closed-by-user') return false;
 
       if (POPUP_NO_DISPONIBLE.includes(e?.code)) {
         // Segundo intento por redirección: se va a Google y vuelve.
         // getRedirectResult (más abajo) completa el login al volver.
         try {
           await signInWithRedirect(auth, googleProvider);
-          return;
+          return true;
         } catch (redirErr) {
           console.error('Google Sign-In por redirección también falló:', redirErr);
         }
@@ -715,6 +679,7 @@ export default function App() {
 
       console.error('Detalle para el equipo — codigo de Firebase Auth:', codigo, e);
       setAuthError(MENSAJE);
+      return false;
     }
   };
 
@@ -757,6 +722,16 @@ export default function App() {
    */
   const handleOpenClass = (level: number, module: number | undefined, week: number) => {
     const mismoModulo = (cl: ClassItem) => (cl.module ?? 1) === (module ?? 1);
+
+    if (currentUser?.role === 'alumno') {
+      const paso = pasosAlumno.find(
+        (p) => p.clase.level === level && p.clase.week === week && mismoModulo(p.clase)
+      );
+      if (!paso || !sePuedeAbrir(paso)) {
+        console.warn('Clase todavía bloqueada para este alumno', { level, module, week });
+        return;
+      }
+    }
 
     let targetClass: ClassItem | undefined;
 
@@ -833,7 +808,14 @@ export default function App() {
         await deleteDoc(doc(db, 'classes', oldDocId));
       }
 
-      await setDoc(doc(db, 'classes', docId), classItem);
+      const { id: idAnterior, ...datos } = classItem;
+      await setDoc(doc(db, 'classes', docId), datos);
+
+      // Si estaba guardada con un ID de la versión vieja (sin módulo), se borra
+      // esa copia: si no, editar una clase vieja la dejaba duplicada.
+      if (idAnterior && idAnterior !== docId) {
+        await deleteDoc(doc(db, 'classes', idAnterior));
+      }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'classes');
       throw error; // que lo vea quien llamó, para poder avisarle al usuario
@@ -882,8 +864,12 @@ export default function App() {
       await deleteDoc(doc(db, 'classes', idActual)).catch(() => {});
 
       // 3. Variantes históricas sin módulo, para limpiar lo que quedó de antes
-      for (const viejo of idsHistoricos(school, level, week)) {
-        await deleteDoc(doc(db, 'classes', viejo)).catch(() => {});
+      // Sólo al borrar una clase del módulo 1: para otro módulo, se llevaría
+      // puesta la clase vieja del mismo número, que es del módulo 1.
+      if ((module ?? 1) === 1) {
+        for (const viejo of idsHistoricos(school, level, week)) {
+          await deleteDoc(doc(db, 'classes', viejo)).catch(() => {});
+        }
       }
 
       // 3b. Si borramos la plantilla de la Biblioteca, se van también sus copias
@@ -926,6 +912,7 @@ export default function App() {
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'classes');
+      throw error; // que el panel avise: antes fallaba en silencio
     }
   };
 
@@ -1101,6 +1088,7 @@ export default function App() {
     } catch (e) {
       console.error("Error approving user role:", e);
       handleFirestoreError(e, OperationType.WRITE, `users/${email}`);
+      throw e;
     }
   };
 
@@ -1109,10 +1097,14 @@ export default function App() {
     try {
       const cleanEmail = email.toLowerCase().trim();
       await deleteDoc(doc(db, 'users', cleanEmail));
+      // También su registro de alumno: si no, seguía figurando en las listas
+      // del colegio y en los números del panel. Sus entregas se conservan.
+      await deleteDoc(doc(db, 'students', cleanEmail.replace(/[^a-zA-Z0-9_.-]/g, '_')));
       console.log(`Successfully deleted user record for ${cleanEmail}`);
     } catch (e) {
       console.error("Error deleting user:", e);
       handleFirestoreError(e, OperationType.DELETE, `users/${email}`);
+      throw e;
     }
   };
 
@@ -1150,7 +1142,7 @@ export default function App() {
             onNavigateHome={handleNavigateHome}
             theme={theme}
             onToggleTheme={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
-            classes={classes}
+            classes={currentUser.role === 'alumno' ? clasesQuePuedeAbrir : classes}
             onOpenClass={handleOpenClass}
           />
         )}
@@ -1286,7 +1278,7 @@ export default function App() {
                 transition={{ duration: 0.4 }}
               >
                 <StaffProgress
-                  students={studentsByState}
+                  students={studentsConProgreso}
                   submissions={submissions}
                   classes={classes}
                   role={currentUser.role as 'directivo'}
@@ -1306,7 +1298,7 @@ export default function App() {
               >
                 <AdminPanel
                   classes={classes}
-                  students={studentsByState}
+                  students={studentsConProgreso}
                   submissions={submissions}
                   allUsers={allUsers}
                   onSaveClass={handleSaveClass}

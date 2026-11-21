@@ -7,6 +7,9 @@ import {
 import { ClassItem } from '../types';
 import { sanitizeHtml } from '../sanitize';
 import { ASSOCIATED_SCHOOLS } from '../data';
+import { htmlATexto, textoAHtml } from '../lib/contenido';
+import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../lib/embeds';
+import { aInputLocal } from '../lib/fechas';
 
 interface ClassModalProps {
   isOpen: boolean;
@@ -17,48 +20,31 @@ interface ClassModalProps {
   onAssignClass?: (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => void | Promise<void>;
 }
 
-function getEmbedUrl(input: string): string {
-  if (!input) return '';
-  const trimmed = input.trim();
-  
-  // Try to extract URL from src="..." parameter
-  const srcRegex = /src\s*=\s*["'“«’‘]([^"'”»’‘]+)["'”»’‘]/i;
-  const match = trimmed.match(srcRegex);
-  if (match && match[1]) {
-    return match[1].trim().replace(/["'”»’‘>]+$/, '').trim();
-  }
-  
-  return trimmed;
+// Presentaciones: sólo direcciones https (un src "javascript:" ejecutaría código).
+const getEmbedUrl = urlDeEmbed;
+
+// Devuelve '' si el enlace no es de YouTube.
+const extractYoutubeId = idDeYoutube;
+
+/** Los campos del editor tal como se cargan desde una clase guardada. */
+function camposIniciales(cl: ClassItem) {
+  const rawVideoId = cl.videoId || '';
+  return {
+    title: cl.title || '',
+    text: cl.text ? htmlATexto(cl.text) : '',
+    videoId:
+      rawVideoId && !rawVideoId.includes('youtube.com') && !rawVideoId.includes('youtu.be')
+        ? `https://www.youtube.com/watch?v=${rawVideoId}`
+        : rawVideoId,
+    slidesUrl: cl.slidesUrl || '',
+    actTitle: cl.actTitle || '',
+    actDesc: cl.actDesc || '',
+  };
 }
 
-// Helper functions to prevent broken embeds
-function extractYoutubeId(input: string): string {
-  if (!input) return '';
-  const trimmed = input.trim();
-  
-  // Check if it's already just an 11-character ID containing letters, numbers, hyphens or underscores
-  if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
-    return trimmed;
-  }
-  
-  // 1. watch?v=ID or &v=ID
-  const watchMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (watchMatch) return watchMatch[1];
-  
-  // 2. /embed/ID
-  const embedMatch = trimmed.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-  if (embedMatch) return embedMatch[1];
-  
-  // 3. youtu.be/ID
-  const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/);
-  if (shortMatch) return shortMatch[1];
-  
-  // 4. v/ID
-  const vMatch = trimmed.match(/\/v\/([a-zA-Z0-9_-]{11})/);
-  if (vMatch) return vMatch[1];
-
-  return trimmed;
-}
+type Campos = Partial<ReturnType<typeof camposIniciales>>;
+const firmaDe = (c: Campos) =>
+  JSON.stringify([c.title ?? '', c.text ?? '', c.videoId ?? '', c.slidesUrl ?? '', c.actTitle ?? '', c.actDesc ?? '']);
 
 export default function ClassModal({
   isOpen,
@@ -95,42 +81,56 @@ export default function ClassModal({
     isScheduled: boolean;
   } | null>(null);
 
-  // 1. Check for drafts on load
+  // Los borradores se guardan por clase (nivel, módulo y número). Antes había
+  // una sola clave para todo el editor y el guardado automático sólo corría
+  // para clases "nuevas", que el panel nunca abre así: no guardaba nunca nada.
+  const draftKey = initialClass
+    ? `fintly_class_draft_l${initialClass.level}_m${initialClass.module ?? 1}_w${initialClass.week}`
+    : 'fintly_class_draft';
+  // Cómo estaba la clase al abrirla: si no cambió nada, no hay borrador que guardar ni ofrecer.
+  const firmaInicial = firmaDe(initialClass ? camposIniciales(initialClass) : {});
+
+  // 1. ¿Quedó trabajo sin guardar de una vez anterior?
   useEffect(() => {
-    if (isOpen && !initialClass) {
-      const saved = localStorage.getItem('fintly_class_draft');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed && (parsed.title || parsed.text || parsed.actTitle || parsed.videoId)) {
-            setHasDraft(true);
-            if (parsed.savedAt) {
-              const d = new Date(parsed.savedAt);
-              setDraftSavedAt(
-                d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) + 
-                ' del ' + 
-                d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
-              );
-            }
-          }
-        } catch (e) {
-          console.error(e);
+    if (!isOpen) {
+      setHasDraft(false);
+      return;
+    }
+    const saved = localStorage.getItem(draftKey);
+    if (!saved) {
+      setHasDraft(false);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(saved);
+      const conContenido = parsed && (parsed.title || parsed.text || parsed.actTitle || parsed.videoId);
+      if (conContenido && firmaDe(parsed) !== firmaInicial) {
+        setHasDraft(true);
+        if (parsed.savedAt) {
+          const d = new Date(parsed.savedAt);
+          setDraftSavedAt(
+            d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false }) +
+            ' del ' +
+            d.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+          );
         }
       } else {
         setHasDraft(false);
       }
-    } else {
+    } catch (e) {
+      console.error(e);
       setHasDraft(false);
     }
   }, [isOpen, initialClass]);
 
-  // 2. Debounced autosave effect
+  // 2. Guardado automático mientras se escribe
   useEffect(() => {
-    if (!isOpen || initialClass) return;
+    if (!isOpen) return;
 
     const delayDebounce = setTimeout(() => {
+      const actual = { title, text, videoId, slidesUrl, actTitle, actDesc };
       const anyContent = title.trim() || text.trim() || videoId.trim() || slidesUrl.trim() || actTitle.trim() || actDesc.trim();
-      if (anyContent) {
+      if (anyContent && firmaDe(actual) !== firmaInicial) {
         const draft = {
           level,
           week,
@@ -144,22 +144,20 @@ export default function ClassModal({
           actDesc,
           savedAt: new Date().toISOString()
         };
-        localStorage.setItem('fintly_class_draft', JSON.stringify(draft));
+        localStorage.setItem(draftKey, JSON.stringify(draft));
       }
     }, 1500);
 
     return () => clearTimeout(delayDebounce);
-  }, [isOpen, initialClass, level, week, title, unlockAt, deadline, text, videoId, slidesUrl, actTitle, actDesc]);
+  }, [isOpen, draftKey, firmaInicial, level, week, title, unlockAt, deadline, text, videoId, slidesUrl, actTitle, actDesc]);
 
   // Handler to Restore Draft
   const handleRestoreDraft = () => {
-    const saved = localStorage.getItem('fintly_class_draft');
+    const saved = localStorage.getItem(draftKey);
     if (!saved) return;
     try {
       const parsed = JSON.parse(saved);
       if (parsed) {
-        setLevel(parsed.level ?? 0);
-        setWeek(parsed.week ?? 1);
         setTitle(parsed.title ?? '');
         setUnlockAt(parsed.unlockAt ?? '');
         setDeadline(parsed.deadline ?? '');
@@ -177,7 +175,7 @@ export default function ClassModal({
 
   // Handler to Dismiss Draft
   const handleDismissDraft = () => {
-    localStorage.removeItem('fintly_class_draft');
+    localStorage.removeItem(draftKey);
     setHasDraft(false);
   };
 
@@ -192,41 +190,24 @@ export default function ClassModal({
     // Initialize publish fields
     const schoolsList = associatedSchools || ASSOCIATED_SCHOOLS;
     setPublishSchools(schoolsList);
-    setPublishUnlockAt(initialClass?.unlockAt || new Date().toISOString().substring(0, 16));
-    setPublishDeadline(initialClass?.deadline || new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16));
+    setPublishUnlockAt(initialClass?.unlockAt || aInputLocal());
+    setPublishDeadline(initialClass?.deadline || aInputLocal(new Date(Date.now() + 7 * 24 * 3600 * 1000)));
 
     if (initialClass) {
+      const c = camposIniciales(initialClass);
       setLevel(initialClass.level);
       setWeek(initialClass.week);
-      setTitle(initialClass.title);
+      setTitle(c.title);
       setUnlockAt(initialClass.unlockAt || '');
       setDeadline(initialClass.deadline || '');
-      // Para mostrar en el textarea texto plano limpio reemplazamos etiquetas html de primer nivel si hay
-      const cleanText = initialClass.text
-        ? initialClass.text
-            .replace(/<p>/g, '')
-            .replace(/<\/p>/g, '\n\n')
-            .replace(/<br>/g, '\n')
-            .replace(/<h3>/g, '### ')
-            .replace(/<\/h3>/g, '\n')
-            .replace(/<ul>/g, '')
-            .replace(/<\/ul>/g, '')
-            .replace(/<li>/g, '* ')
-            .replace(/<\/li>/g, '\n')
-            .trim()
-        : '';
-      setText(cleanText);
-      const rawVideoId = initialClass.videoId || '';
-      const initialVideoUrl = rawVideoId && !rawVideoId.includes('youtube.com') && !rawVideoId.includes('youtu.be')
-        ? `https://www.youtube.com/watch?v=${rawVideoId}`
-        : rawVideoId;
-      setVideoId(initialVideoUrl);
-      setSlidesUrl(initialClass.slidesUrl || '');
-      setActTitle(initialClass.actTitle || '');
-      setActDesc(initialClass.actDesc || '');
+      setText(c.text);
+      setVideoId(c.videoId);
+      setSlidesUrl(c.slidesUrl);
+      setActTitle(c.actTitle);
+      setActDesc(c.actDesc);
     } else {
       // Limpiar formulario para nueva clase si no hay borrador activo o si ya fue descartado
-      const saved = localStorage.getItem('fintly_class_draft');
+      const saved = localStorage.getItem(draftKey);
       if (!saved) {
         setLevel(0);
         setWeek(1);
@@ -268,25 +249,9 @@ export default function ClassModal({
 
   // Helper to build class item
   const buildClassItem = (extractedId: string): ClassItem => {
-    // Convertimos de Markdown ultra simple/texto plano de vuelta a los tags HTML de Martina
-    let htmlText = text.trim();
-    if (htmlText) {
-      // Reemplazamos encabezados de markdown
-      htmlText = htmlText.replace(/### (.*?)\n/g, '<h3>$1</h3>');
-      // Reemplazamos listas
-      htmlText = htmlText.replace(/\* (.*?)\n/g, '<li>$1</li>');
-      // Envolver saltos de línea compuestos
-      htmlText = htmlText
-        .split('\n\n')
-        .map((p) => {
-          if (p.startsWith('<h3>') || p.startsWith('<li>')) return p;
-          if (p.includes('<li>')) return `<ul>${p}</ul>`;
-          return `<p>${p.replace(/\n/g, '<br>')}</p>`;
-        })
-        .join('');
-    }
-
     return {
+      // El ID con que estaba guardada: si es de la versión vieja (sin módulo), se muda al actual.
+      id: initialClass?.id,
       level,
       // Conservamos el módulo y la marca de syllabus del original:
       // sin esto la clase se guarda huérfana y no aparece en su módulo
@@ -296,7 +261,7 @@ export default function ClassModal({
       title: title.trim(),
       unlockAt,
       deadline,
-      text: htmlText || `<p>${text}</p>`,
+      text: textoAHtml(text),
       videoId: extractedId,
       slidesUrl: slidesUrl.trim(),
       actTitle: actTitle.trim(),
@@ -304,7 +269,7 @@ export default function ClassModal({
     };
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const validationError = validateFields();
@@ -316,8 +281,13 @@ export default function ClassModal({
     const extractedId = extractYoutubeId(videoId.trim());
     const classItem = buildClassItem(extractedId);
 
-    localStorage.removeItem('fintly_class_draft');
-    onSave(classItem);
+    try {
+      await onSave(classItem);
+      localStorage.removeItem(draftKey); // recién ahora: si falló, el trabajo sigue guardado
+    } catch (error) {
+      console.error('No se pudo guardar la clase:', error);
+      alert('No se pudo guardar la clase. Revisá la conexión y probá de nuevo: lo que escribiste sigue acá.');
+    }
   };
 
   const handleDirectPublishClick = () => {
@@ -349,7 +319,7 @@ export default function ClassModal({
       }
 
       // 3. Limpiar borradores
-      localStorage.removeItem('fintly_class_draft');
+      localStorage.removeItem(draftKey);
 
       // 4. Configurar datos de confirmación
       const isScheduled = publishUnlockAt ? new Date(publishUnlockAt) > new Date() : false;
@@ -688,6 +658,7 @@ ${error?.message || 'Error desconocido'}`);
               </label>
               <select
                 value={level}
+                disabled={!!initialClass}
                 onChange={(e) => setLevel(Number(e.target.value))}
                 className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
               >
@@ -707,6 +678,7 @@ ${error?.message || 'Error desconocido'}`);
                 min="1"
                 required
                 value={week}
+                disabled={!!initialClass}
                 onChange={(e) => setWeek(Number(e.target.value))}
                 placeholder="ej: 1"
                 className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
@@ -1042,22 +1014,7 @@ ${error?.message || 'Error desconocido'}`);
                     <div 
                       className="class-body-html"
                       dangerouslySetInnerHTML={{ 
-                        __html: sanitizeHtml((() => {
-                          let htmlText = text.trim();
-                          if (htmlText) {
-                            htmlText = htmlText.replace(/### (.*?)\n/g, '<h3>$1</h3>');
-                            htmlText = htmlText.replace(/\* (.*?)\n/g, '<li>$1</li>');
-                            htmlText = htmlText
-                              .split('\n\n')
-                              .map((p) => {
-                                if (p.startsWith('<h3>') || p.startsWith('<li>')) return p;
-                                if (p.includes('<li>')) return `<ul>${p}</ul>`;
-                                return `<p>${p.replace(/\n/g, '<br>')}</p>`;
-                              })
-                              .join('');
-                          }
-                          return htmlText || `<p>${text || 'No hay texto redactado todavía.'}</p>`;
-                        })())
+                        __html: sanitizeHtml(textoAHtml(text) || '<p>No hay texto redactado todavía.</p>')
                       }}
                     />
                   </motion.div>
@@ -1073,7 +1030,7 @@ ${error?.message || 'Error desconocido'}`);
                       <div className="relative aspect-video rounded-2xl border border-white/5 light:border-neutral-200 overflow-hidden bg-black/40 light:bg-neutral-50">
                         <iframe
                           title="Youtube embed code"
-                          src={`https://www.youtube.com/embed/${extractYoutubeId(videoId.trim())}`}
+                          src={urlDeYoutube(videoId.trim())}
                           allowFullScreen
                           className="absolute top-0 left-0 w-full h-full border-0"
                         />

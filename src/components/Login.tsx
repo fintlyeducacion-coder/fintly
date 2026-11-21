@@ -3,7 +3,8 @@ import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from
 import { AlertCircle, TrendingUp, Users, BookOpen } from 'lucide-react';
 
 interface LoginProps {
-  onGoogleLogin?: () => void;
+  /** Devuelve false si se canceló o falló, para liberar el botón. */
+  onGoogleLogin?: () => Promise<boolean> | void;
   externalError?: string;
 }
 
@@ -42,7 +43,11 @@ export default function Login({ onGoogleLogin, externalError }: LoginProps) {
   const handleGoogle = async () => {
     setError('');
     setLoading(true);
-    try { if (onGoogleLogin) await onGoogleLogin(); }
+    try {
+      const entro = onGoogleLogin ? await onGoogleLogin() : false;
+      // Antes quedaba en "Conectando…" para siempre si se cerraba la ventana de Google.
+      if (entro === false) setLoading(false);
+    }
     catch (e: any) { setError(e.message || 'Error al iniciar sesión.'); setLoading(false); }
   };
 

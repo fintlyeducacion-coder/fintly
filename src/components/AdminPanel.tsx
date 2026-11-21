@@ -10,6 +10,7 @@ import { ClassItem, Student, ActivitySubmission, User } from '../types';
 import ClassModal from './ClassModal';
 import { COURSES, ASSOCIATED_SCHOOLS, CLASES_POR_MODULO } from '../data';
 import { entregaEsDeLaClase } from '../classKeys';
+import { aInputLocal } from '../lib/fechas';
 
 interface AdminPanelProps {
   classes: ClassItem[];
@@ -17,7 +18,7 @@ interface AdminPanelProps {
   submissions: ActivitySubmission[];
   allUsers?: User[];
   onSaveClass: (cl: ClassItem, oldKey?: { level: number; module?: number; week: number }) => void | Promise<void>;
-  onDeleteClass: (level: number, week: number, school?: string, id?: string, module?: number) => void;
+  onDeleteClass: (level: number, week: number, school?: string, id?: string, module?: number) => void | Promise<void>;
   onAssignClass: (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => void;
   onApproveUser?: (email: string, targetRole: 'alumno' | 'directivo', level?: number, school?: string) => void | Promise<void>;
   onDeleteUser?: (email: string) => void | Promise<void>;
@@ -174,8 +175,13 @@ export default function AdminPanel({
   const guardarEdicion = async (u: User) => {
     if (!onApproveUser) return;
     // Reutilizamos el flujo de aprobacion: ya escribe rol, nivel y colegio en users y students
-    await onApproveUser(u.email, u.role as 'alumno' | 'directivo', editLevel, editSchool);
-    setEditingUser(null);
+    try {
+      await onApproveUser(u.email, u.role as 'alumno' | 'directivo', editLevel, editSchool);
+      setEditingUser(null);
+    } catch (e) {
+      console.error('No se pudo guardar el cambio:', e);
+      alert('No se pudieron guardar los cambios. Revisá la conexión y probá de nuevo.');
+    }
   };
   const [processingUser, setProcessingUser] = useState<string | null>(null);
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -188,7 +194,8 @@ export default function AdminPanel({
   const activeSchoolsSet = new Set(
     students.map(s => s.school?.trim().toLowerCase()).filter(Boolean)
   );
-  const activeSchoolsCount = activeSchoolsSet.size || ASSOCIATED_SCHOOLS.length;
+  // Cero es cero: antes, sin alumnos, mostraba los seis colegios del convenio.
+  const activeSchoolsCount = activeSchoolsSet.size;
 
   // Usuarios pendientes de aprobación (role === 'pausado')
   const pendingUsers = allUsers.filter(u => u.role === 'pausado');
@@ -233,12 +240,12 @@ export default function AdminPanel({
   // Efectividad de completado a tiempo: % de entregas hechas ANTES del deadline
   const onTimeEffectivenessPct = totalExpectedDueSubmissions > 0
     ? Math.round((totalOnTimeSubmissions / totalExpectedDueSubmissions) * 100)
-    : 100;
+    : null; // todavía no venció ningún plazo: no hay nada que medir
 
   // Efectividad de entrega total: % de entregas hechas en algún momento (a tiempo o tarde)
   const totalDeliveryEffectivenessPct = totalExpectedDueSubmissions > 0
     ? Math.round((totalDoneSubmissionsForDueClasses / totalExpectedDueSubmissions) * 100)
-    : 100;
+    : null;
 
   // Progreso promedio general
   const overallAvgProgress = students.length > 0
@@ -290,8 +297,8 @@ export default function AdminPanel({
       module: mod,
       week: nextWeek,
       title: '',
-      unlockAt: new Date().toISOString().substring(0, 16),
-      deadline: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().substring(0, 16),
+      unlockAt: aInputLocal(),
+      deadline: aInputLocal(new Date(Date.now() + 7 * 24 * 3600 * 1000)),
       text: '',
       videoId: '',
       slidesUrl: '',
@@ -334,6 +341,7 @@ export default function AdminPanel({
       }
     } catch (e) {
       console.error("Error approving user:", e);
+      alert('No se pudo habilitar la cuenta. Revisá la conexión y probá de nuevo.');
     } finally {
       setProcessingUser(null);
     }
@@ -348,6 +356,7 @@ export default function AdminPanel({
       }
     } catch (e) {
       console.error("Error deleting user:", e);
+      alert('No se pudo eliminar la cuenta. Revisá la conexión y probá de nuevo.');
     } finally {
       setProcessingUser(null);
     }
@@ -531,7 +540,7 @@ export default function AdminPanel({
                     </h3>
                   </div>
                   <div className="px-3 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold text-sm">
-                    {onTimeEffectivenessPct}%
+                    {onTimeEffectivenessPct === null ? '—' : `${onTimeEffectivenessPct}%`}
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 light:text-neutral-500 mb-4 leading-relaxed">
@@ -540,7 +549,7 @@ export default function AdminPanel({
                 <div className="w-full h-2.5 rounded-full bg-neutral-800 light:bg-neutral-200 overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" 
-                    style={{ width: `${Math.min(100, Math.max(0, onTimeEffectivenessPct))}%` }}
+                    style={{ width: `${Math.min(100, Math.max(0, onTimeEffectivenessPct ?? 0))}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[11px] font-mono text-gray-500 mt-2">
@@ -560,7 +569,7 @@ export default function AdminPanel({
                     </h3>
                   </div>
                   <div className="px-3 py-1 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 font-mono font-bold text-sm">
-                    {totalDeliveryEffectivenessPct}%
+                    {totalDeliveryEffectivenessPct === null ? '—' : `${totalDeliveryEffectivenessPct}%`}
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 light:text-neutral-500 mb-4 leading-relaxed">
@@ -569,7 +578,7 @@ export default function AdminPanel({
                 <div className="w-full h-2.5 rounded-full bg-neutral-800 light:bg-neutral-200 overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full transition-all duration-500" 
-                    style={{ width: `${Math.min(100, Math.max(0, totalDeliveryEffectivenessPct))}%` }}
+                    style={{ width: `${Math.min(100, Math.max(0, totalDeliveryEffectivenessPct ?? 0))}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[11px] font-mono text-gray-500 mt-2">
@@ -743,7 +752,12 @@ export default function AdminPanel({
                             Editar
                           </button>
                           <button
-                            onClick={() => { if (confirmarBorradoClase(cl)) onDeleteClass(cl.level, cl.week, undefined, cl.id, cl.module); }}
+                            onClick={() => {
+                              if (!confirmarBorradoClase(cl)) return;
+                              Promise.resolve(onDeleteClass(cl.level, cl.week, undefined, cl.id, cl.module)).catch(() =>
+                                alert('No se pudo eliminar la clase. Revisá la conexión y probá de nuevo.')
+                              );
+                            }}
                             className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 cursor-pointer"
                             title="Eliminar clase"
                           >

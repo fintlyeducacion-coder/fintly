@@ -7,7 +7,8 @@ import {
 import { ClassItem, User, ActivitySubmission } from '../types';
 import { sanitizeHtml } from '../sanitize';
 import { entregaEsDeLaClase } from '../classKeys';
-import { COURSES, normalizarNota } from '../data';
+import { COURSES, normalizarNota, PERMITIR_ENTREGA_TARDIA } from '../data';
+import { urlDeEmbed, urlDeYoutube } from '../lib/embeds';
 
 /* ── Confetti ─────────────────────────────────────────────────── */
 const PARTICLES = ['🎉', '🌟', '💸', '🚀', '🔥', '👏', '🧠', '💼'];
@@ -36,11 +37,8 @@ function Confetti() {
 }
 
 /* ── Helpers ──────────────────────────────────────────────────── */
-function getEmbedUrl(input: string): string {
-  if (!input) return '';
-  const m = input.trim().match(/src\s*=\s*["'«'']([^"'»'']+)["'»'']/i);
-  return m?.[1]?.trim().replace(/["'»''>]+$/, '').trim() ?? input.trim();
-}
+// Presentaciones: sólo direcciones https (un src "javascript:" ejecutaría código).
+const getEmbedUrl = urlDeEmbed;
 
 const GRADE_COLORS: Record<string, string> = {
   'Excelente':     'bg-emerald-600/90 border-emerald-500/50 text-white',
@@ -82,9 +80,14 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
   const existing  = submissions.find(
     (s) => entregaEsDeLaClase(s, classItem) && s.studentEmail === user.email
   );
-  const draftKey  = `draft_${user.email}_${classItem.level}_${classItem.week}`;
+  // El borrador incluye el módulo. Antes no: lo escrito en la clase 1 del
+  // módulo 1 aparecía en la clase 1 del módulo 2.
+  const draftKey  = `draft_${user.email}_l${classItem.level}_m${classItem.module ?? 1}_w${classItem.week}`;
+  const draftKeyViejo = `draft_${user.email}_${classItem.level}_${classItem.week}`;
   const now       = new Date();
   const overdue   = !!(classItem.deadline && now > new Date(classItem.deadline));
+  // Con entrega tardía permitida, el plazo vencido avisa pero no bloquea.
+  const bloqueada = overdue && !PERMITIR_ENTREGA_TARDIA;
   const course    = COURSES.find(c => c.id === classItem.level);
   const wordCount = response.trim() ? response.trim().split(/\s+/).length : 0;
   // Normalizamos para que el alumno vea exactamente la misma nota que puso el
@@ -94,7 +97,10 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
 
   useEffect(() => {
     if (existing) { setResponse(''); setDraftBanner(false); return; }
-    const saved = localStorage.getItem(draftKey);
+    // Un borrador con la clave vieja sólo puede ser del módulo 1.
+    const saved =
+      localStorage.getItem(draftKey) ??
+      ((classItem.module ?? 1) === 1 ? localStorage.getItem(draftKeyViejo) : null);
     if (saved) { setResponse(saved); setDraftBanner(true); }
     else { setResponse(''); setDraftBanner(false); }
   }, [classItem.level, classItem.week, user.email, existing, draftKey]);
@@ -110,7 +116,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!response.trim() || overdue || enviando) return;
+    if (!response.trim() || bloqueada || enviando) return;
 
     setEnviando(true);
     setErrorEnvio(null);
@@ -122,6 +128,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
 
       setJustSubmitted(true);
       localStorage.removeItem(draftKey); // recién ahora es seguro borrarlo
+      localStorage.removeItem(draftKeyViejo);
       setDraftBanner(false);
     } catch (err) {
       console.error('La entrega no se pudo guardar:', err);
@@ -133,7 +140,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
   };
 
   const fmt = (d: string) => !d ? '—' : new Date(d).toLocaleDateString('es-AR', {
-    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
   });
 
   return (
@@ -225,7 +232,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
                 <div className="relative aspect-video rounded-2xl border border-white/[0.07] light:border-slate-200 overflow-hidden bg-black/50 shadow-2xl shadow-black/40">
                   <iframe
                     title="Video de la clase"
-                    src={`https://www.youtube.com/embed/${classItem.videoId}`}
+                    src={urlDeYoutube(classItem.videoId)}
                     allowFullScreen
                     className="absolute inset-0 w-full h-full border-0"
                   />
@@ -238,7 +245,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
 
           {tab === 'slides' && (
             <motion.div key="slides" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}>
-              {classItem.slidesUrl ? (
+              {getEmbedUrl(classItem.slidesUrl) ? (
                 <div className="rounded-2xl border border-white/[0.07] light:border-slate-200 overflow-hidden shadow-xl">
                   <iframe
                     title="Presentación de la clase"
@@ -285,7 +292,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
                       : 'bg-amber-500/[0.07] border-amber-500/15 text-amber-400 light:text-amber-600'
                   }`}>
                     {overdue
-                      ? <><Clock className="w-3.5 h-3.5 shrink-0" /><span>Plazo cerrado · {fmt(classItem.deadline)}</span></>
+                      ? <><Clock className="w-3.5 h-3.5 shrink-0" /><span>{PERMITIR_ENTREGA_TARDIA ? `Plazo vencido el ${fmt(classItem.deadline)} · podés entregar igual, queda fuera de plazo` : `Plazo cerrado · ${fmt(classItem.deadline)}`}</span></>
                       : <><CalendarDays className="w-3.5 h-3.5 shrink-0" /><span>Entrega hasta el {fmt(classItem.deadline)}</span></>
                     }
                   </div>
@@ -366,7 +373,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
                       </div>
                     </div>
                     <textarea
-                      disabled={overdue}
+                      disabled={bloqueada}
                       value={response}
                       onChange={e => onType(e.target.value)}
                       placeholder="Escribí tu reflexión, análisis o respuesta a la consigna…"
@@ -394,7 +401,7 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
                       </span>
                       <button
                         type="submit"
-                        disabled={overdue || !response.trim() || enviando}
+                        disabled={bloqueada || !response.trim() || enviando}
                         className="liquid-glass-btn w-full sm:w-auto px-6 py-3 sm:py-2.5 text-[13px]"
                       >
                         {enviando ? 'Enviando…' : 'Entregar actividad →'}

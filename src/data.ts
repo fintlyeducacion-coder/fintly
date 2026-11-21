@@ -14,6 +14,20 @@ export const CLASES_POR_MODULO = 4;
 export const MODULOS_POR_NIVEL = 4;
 
 /**
+ * ¿Se puede entregar una actividad después de su fecha límite?
+ *
+ * Con `true` la entrega tardía se acepta; el panel ya la cuenta aparte en
+ * "entregas a tiempo" y marca al alumno como demorado.
+ *
+ * Antes el plazo vencido bloqueaba la entrega. Como cada clase pide la
+ * anterior entregada, eso dejaba al alumno trabado para siempre: no podía
+ * entregar esa clase ni abrir ninguna de las siguientes.
+ *
+ * Para volver a un plazo estricto, poner `false`.
+ */
+export const PERMITIR_ENTREGA_TARDIA = true;
+
+/**
  * Lleva una nota guardada a la escala canónica de cuatro valores.
  *
  * Existe porque en la base hay notas de versiones anteriores con otra

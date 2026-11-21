@@ -121,8 +121,9 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
 
   const doneCount  = courseClasses.filter(cl => submitted(cl)).length;
   const openCount  = courseClasses.filter(cl => isOpen(cl) && !submitted(cl)).length;
-  const total      = courseClasses.length || 1;
-  const pct        = Math.round((doneCount / total) * 100);
+  // Sin clases es 0 de 0, no "0 de 1".
+  const total      = courseClasses.length;
+  const pct        = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
   const nextClass  = courseClasses.find(cl => isOpen(cl) && !submitted(cl)) ?? null;
   const course     = COURSES.find(c => c.id === activeLevel);
@@ -151,7 +152,13 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
     if (filter === 'done'    && !submitted(cl)) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
-      return cl.title.toLowerCase().includes(q) || `semana ${cl.week}`.includes(q);
+      return (
+        cl.title.toLowerCase().includes(q) ||
+        `semana ${cl.week}`.includes(q) ||
+        `clase ${cl.week}`.includes(q) ||
+        `módulo ${cl.module ?? 1}`.includes(q) ||
+        `modulo ${cl.module ?? 1}`.includes(q)
+      );
     }
     return true;
   });
@@ -268,7 +275,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
                     Seguí por acá
                   </span>
                 </div>
-                <div className="text-[10px] text-slate-400 light:text-slate-600 font-mono">Semana {nextClass.week}</div>
+                <div className="text-[10px] text-slate-400 light:text-slate-600 font-mono">Módulo {nextClass.module ?? 1} · Clase {nextClass.week}</div>
                 <h3 className="font-semibold text-white light:text-slate-800 text-sm leading-snug group-hover:text-violet-300 light:group-hover:text-violet-600 transition-colors">
                   {nextClass.title}
                 </h3>
@@ -419,7 +426,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
                       {cl.title}
                     </p>
                     <p className="text-[11px] text-slate-400 light:text-slate-600 font-mono mt-0.5">
-                      Semana {cl.week}
+                      Módulo {cl.module ?? 1} · Clase {cl.week}
                       {cl.deadline && open && !done && (
                         urgency(cl.deadline) ? (
                           <span className="ml-2 inline-flex items-center gap-1 font-bold text-amber-400 light:text-amber-600">
