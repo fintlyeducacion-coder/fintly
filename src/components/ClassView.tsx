@@ -4,10 +4,11 @@ import {
   ArrowLeft, BookOpen, Video, Presentation, FilePenLine,
   Clock, CalendarDays, CheckCircle2, History, ChevronRight,
 } from 'lucide-react';
-import { ClassItem, User, ActivitySubmission } from '../types';
+import { ClassItem, User, ActivitySubmission, Curso } from '../types';
+import { FINANZAS, acentoDeNivel, cursoDe, nivelesDe } from '../lib/cursos';
 import { sanitizeHtml } from '../sanitize';
 import { entregaEsDeLaClase } from '../classKeys';
-import { COURSES, normalizarNota, PERMITIR_ENTREGA_TARDIA } from '../data';
+import { normalizarNota, PERMITIR_ENTREGA_TARDIA } from '../data';
 import { urlDeEmbed, urlDeYoutube } from '../lib/embeds';
 
 /* ── Confetti ─────────────────────────────────────────────────── */
@@ -61,6 +62,8 @@ const TABS: { id: Tab; label: string; Icon: React.FC<{ className?: string }> }[]
 
 interface Props {
   user: User;
+  /** Curso de la clase. Sin dato, Finanzas. */
+  curso?: Curso;
   classItem: ClassItem;
   submissions: ActivitySubmission[];
   onBack: () => void;
@@ -68,7 +71,7 @@ interface Props {
 }
 
 /* ── ClassView ────────────────────────────────────────────────── */
-export default function ClassView({ user, classItem, submissions, onBack, onSubmitActivity }: Props) {
+export default function ClassView({ user, curso, classItem, submissions, onBack, onSubmitActivity }: Props) {
   const [tab,           setTab]           = useState<Tab>('content');
   const [response,      setResponse]      = useState('');
   const [justSubmitted, setJustSubmitted] = useState(false);
@@ -82,13 +85,22 @@ export default function ClassView({ user, classItem, submissions, onBack, onSubm
   );
   // El borrador incluye el módulo. Antes no: lo escrito en la clase 1 del
   // módulo 1 aparecía en la clase 1 del módulo 2.
-  const draftKey  = `draft_${user.email}_l${classItem.level}_m${classItem.module ?? 1}_w${classItem.week}`;
+  // Los cursos que no son Finanzas llevan el suyo: su "clase 1" no es la de Finanzas.
+  const tramoCurso = cursoDe(classItem) === FINANZAS ? '' : `c${cursoDe(classItem)}_`;
+  const draftKey  = `draft_${user.email}_${tramoCurso}l${classItem.level}_m${classItem.module ?? 1}_w${classItem.week}`;
   const draftKeyViejo = `draft_${user.email}_${classItem.level}_${classItem.week}`;
   const now       = new Date();
   const overdue   = !!(classItem.deadline && now > new Date(classItem.deadline));
   // Con entrega tardía permitida, el plazo vencido avisa pero no bloquea.
   const bloqueada = overdue && !PERMITIR_ENTREGA_TARDIA;
-  const course    = COURSES.find(c => c.id === classItem.level);
+  // Nombre y color: el nombre del nivel (el editado o el de siempre). En los
+  // cursos que no son Finanzas se antepone el nombre del curso.
+  const nivelInfo = nivelesDe(curso)[classItem.level];
+  const nombreNivel = nivelInfo?.name || `Nivel ${classItem.level}`;
+  const course    = {
+    name: cursoDe(classItem) === FINANZAS ? nombreNivel : `${curso?.name ?? 'Curso'} · ${nombreNivel}`,
+    accent: nivelInfo?.accent ?? acentoDeNivel(curso, classItem.level),
+  };
   const wordCount = response.trim() ? response.trim().split(/\s+/).length : 0;
   // Normalizamos para que el alumno vea exactamente la misma nota que puso el
   // docente: en la base hay correcciones viejas guardadas como "Muy bueno".

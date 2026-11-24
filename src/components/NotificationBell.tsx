@@ -6,10 +6,13 @@ import { ClassItem, User } from '../types';
 interface Props {
   user: User;
   classes: ClassItem[];
-  onOpenClass: (level: number, module: number | undefined, week: number) => void;
+  onOpenClass: (level: number, module: number | undefined, week: number, course?: string) => void;
 }
 
-const classKey = (cl: ClassItem) => `${cl.level}_${cl.module ?? 0}_${cl.week}`;
+// Finanzas conserva la clave de siempre (si cambiara, todas las clases ya
+// vistas volverían a aparecer como nuevas); los demás cursos llevan el suyo.
+const classKey = (cl: ClassItem) =>
+  `${cl.course && cl.course !== 'finanzas' ? `${cl.course}_` : ''}${cl.level}_${cl.module ?? 0}_${cl.week}`;
 
 export default function NotificationBell({ user, classes, onOpenClass }: Props) {
   const storageKey = `fintly_seen_classes_${user.email.toLowerCase()}`;
@@ -35,7 +38,8 @@ export default function NotificationBell({ user, classes, onOpenClass }: Props) 
     return classes
       .filter(cl =>
         !cl.isSyllabus &&
-        cl.level === (user.level ?? 0) &&
+        // El nivel ya viene filtrado: el campus le pasa sólo las clases que
+        // puede abrir, de todos los cursos que hace (cada uno en su nivel).
         cl.school?.toLowerCase() === user.school?.toLowerCase() &&
         (!cl.unlockAt || now >= new Date(cl.unlockAt))
       )
@@ -80,7 +84,7 @@ export default function NotificationBell({ user, classes, onOpenClass }: Props) 
     localStorage.setItem(storageKey, JSON.stringify(next));
     setSeen(next);
     setOpen(false);
-    onOpenClass(cl.level, cl.module, cl.week);
+    onOpenClass(cl.level, cl.module, cl.week, cl.course);
   };
 
   const fmt = (d?: string) =>

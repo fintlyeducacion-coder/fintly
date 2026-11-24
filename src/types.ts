@@ -1,10 +1,33 @@
+/** Un alumno cursando un curso, en un nivel. */
+export interface Inscripcion {
+  course: string;
+  level: number;
+}
+
+/** Un curso del campus. Finanzas no se guarda: es el de siempre (ver lib/cursos.ts). */
+export interface Curso {
+  id: string;
+  name: string;
+  desc: string;
+  /** Degradado de Tailwind, de PALETA_CURSOS. */
+  accent: string;
+  createdAt?: string;
+  /** Nombre y descripción de cada nivel (0 a 3). Lo que falte usa el valor por defecto. */
+  niveles?: { name?: string; desc?: string }[];
+  /** Nombre de cada módulo, con clave "nivel_módulo" (por ejemplo "0_2"). */
+  modulos?: Record<string, string>;
+}
+
 export interface User {
   email: string;
   name: string;
   role: 'admin' | 'directivo' | 'alumno' | 'pausado';
   initials: string;
+  /** Nivel en Finanzas. Se conserva para las cuentas de antes de los cursos. */
   level?: number;
   school?: string;
+  /** Cursos que hace. Sin esta lista, el alumno está en Finanzas, en `level`. */
+  inscripciones?: Inscripcion[];
 }
 
 export interface ClassItem {
@@ -22,6 +45,8 @@ export interface ClassItem {
   actDesc?: string;
   isSyllabus?: boolean;
   school?: string;
+  /** Curso. Sin este dato la clase es de Finanzas. */
+  course?: string;
 }
 
 export interface Student {
@@ -34,6 +59,7 @@ export interface Student {
   status: 'ok' | 'warn';
   school: string;
   registered?: boolean;
+  inscripciones?: Inscripcion[];
 }
 
 export type GradeType = 'Excelente' | 'Muy bien' | 'Bien' | 'Puede mejorar';
@@ -43,6 +69,8 @@ export interface ActivitySubmission {
   /** Módulo 1-4. Opcional por las entregas anteriores al cambio de esquema. */
   classModule?: number;
   classWeek: number;
+  /** Curso. Sin este dato la entrega es de Finanzas. */
+  classCourse?: string;
   studentEmail: string;
   /**
    * Colegio del alumno al momento de entregar.

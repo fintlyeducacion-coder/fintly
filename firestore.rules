@@ -93,9 +93,19 @@ service cloud.firestore {
       allow update: if esAdmin() ||
                     (isOwner(email) &&
                      !request.resource.data.diff(resource.data)
-                        .affectedKeys().hasAny(['role', 'school', 'level']));
+                        .affectedKeys().hasAny(['role', 'school', 'level', 'inscripciones']));
 
       allow delete: if esAdmin();
+    }
+
+    // ── Cursos ───────────────────────────────────────────────────
+    //
+    // Finanzas no está acá: es el curso de siempre. Los demás los crea sólo
+    // el admin. Cualquier cuenta aprobada puede leerlos, para mostrar sus
+    // nombres; el contenido de cada curso sigue protegido en 'classes'.
+    match /courses/{courseId} {
+      allow read: if esAdmin() || esAprobado();
+      allow write: if esAdmin();
     }
 
     // ── 2. Clases ────────────────────────────────────────────────
@@ -133,7 +143,7 @@ service cloud.firestore {
       // 'isStaff()' acá es necesario: la sincronización de progreso corre en el
       // navegador del directivo y reescribe los registros de sus alumnos.
       allow create: if isStaff() || (isSignedIn() && request.resource.data.email.lower() == emailOf(request.auth));
-      allow update: if isStaff() || (isSignedIn() && resource.data.email.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'school']));
+      allow update: if isStaff() || (isSignedIn() && resource.data.email.lower() == emailOf(request.auth) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'school', 'level', 'inscripciones']));
 
       // Borrar sí es sólo del admin. Antes cualquier directivo podía borrar a
       // los alumnos de los seis colegios, sin backups de los que recuperarlos.

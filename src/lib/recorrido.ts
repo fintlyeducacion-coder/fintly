@@ -12,6 +12,7 @@
 import { ActivitySubmission, ClassItem, Student } from '../types';
 import { entregaEsDeLaClase, ordenEnNivel } from '../classKeys';
 import { todaviaNo, yaPaso } from './fechas';
+import { FINANZAS, cursoDe, nivelEn } from './cursos';
 
 const mismoTexto = (a?: string, b?: string) =>
   (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
@@ -148,14 +149,16 @@ export function calcularProgresos(
   students: Student[],
   classes: ClassItem[],
   entregas: ActivitySubmission[],
-  ahora: Date = new Date()
+  ahora: Date = new Date(),
+  /** Curso del que se calcula el avance. Cada curso se cuenta por separado. */
+  course: string = FINANZAS
 ): Student[] {
   const clave = (school: string | undefined, level: number) =>
     `${(school ?? '').trim().toLowerCase()}|${level}`;
 
   const clasesPorCurso = new Map<string, ClassItem[]>();
   for (const cl of classes) {
-    if (cl.isSyllabus || !cl.school) continue;
+    if (cl.isSyllabus || !cl.school || cursoDe(cl) !== course) continue;
     const k = clave(cl.school, cl.level);
     const lista = clasesPorCurso.get(k);
     if (lista) lista.push(cl);
@@ -172,7 +175,9 @@ export function calcularProgresos(
   }
 
   return students.map((student) => {
-    const curso = clasesPorCurso.get(clave(student.school, student.level)) ?? [];
+    // Nivel del alumno en este curso. Si no lo cursa, no tiene clases que contar.
+    const nivel = nivelEn(student, course);
+    const curso = nivel === undefined ? [] : clasesPorCurso.get(clave(student.school, nivel)) ?? [];
     const mias = entregasPorCorreo.get((student.email ?? '').trim().toLowerCase()) ?? [];
     const entregada = (cl: ClassItem) => mias.some((e) => entregaEsDeLaClase(e, cl));
 

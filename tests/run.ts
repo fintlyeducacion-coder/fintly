@@ -21,6 +21,8 @@ import { alcanceDeBorrado } from '../src/lib/borrado';
 import { contarPalabras, htmlATexto, textoAHtml, tieneTexto } from '../src/lib/contenido';
 import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../src/lib/embeds';
 import { aInputLocal, todaviaNo, urgencia, yaPaso } from '../src/lib/fechas';
+import { alcanceDeCurso, etiquetaNivel, idDeCurso, inscripcionesDe, listaDeCursos, nivelEn, nombreModulo } from '../src/lib/cursos';
+import { assignedId, entregaEsDeLaClase, submissionId, submissionIdExistente, syllabusId } from '../src/classKeys';
 
 let pasaron = 0;
 const fallas: string[] = [];
@@ -245,6 +247,44 @@ prueba('borrar la copia de un colegio no toca las entregas de otro colegio', () 
   assert.deepEqual(r.entregas.map((e) => e.studentEmail).sort(), [ANA, 'viejo@faro.edu.ar'].sort());
 });
 
+// ── Cursos ──────────────────────────────────────────────────────
+prueba('Finanzas conserva sus IDs de siempre; los otros cursos llevan el suyo', () => {
+  assert.equal(syllabusId(0, 1, 1), 'syllabus_l0_m1_w1');
+  assert.equal(syllabusId(0, 1, 1, 'finanzas'), 'syllabus_l0_m1_w1');
+  assert.equal(syllabusId(0, 1, 1, 'ia'), 'syllabus_cia_l0_m1_w1');
+  assert.equal(assignedId('Faro Escobar', 0, 1, 1, 'vida-adulta'), 'assigned_sFaro_Escobar_cvida-adulta_l0_m1_w1');
+  assert.equal(submissionId('a@b.com', 0, 2, 3, 'ia'), 'a_b.com_cia_l0_m2_w3');
+  assert.equal(submissionIdExistente('a@b.com', 0, 2, 3, 'ia'), 'a_b.com_cia_l0_m2_w3');
+  assert.equal(submissionIdExistente('a@b.com', 0, undefined, 3), 'a_b.com_l0_w3');
+});
+
+prueba('una entrega de otro curso no cuenta para la misma clase de Finanzas', () => {
+  const clIA = clase(1, 1, { course: 'ia' });
+  assert.equal(entregaEsDeLaClase(entrega(1, 1), clase(1, 1)), true);
+  assert.equal(entregaEsDeLaClase(entrega(1, 1), clIA), false);
+  assert.equal(entregaEsDeLaClase(entrega(1, 1, { classCourse: 'ia' }), clIA), true);
+  assert.equal(entregaEsDeLaClase(entrega(1, 1, { classCourse: 'ia' }), clase(1, 1)), false);
+});
+
+prueba('el avance se cuenta por curso, con el nivel de cada inscripción', () => {
+  const clases = [clase(1, 1), clase(1, 2), clase(1, 1, { course: 'ia', level: 2 })];
+  const ana: Student = { ...alumno(ANA, COLE), level: 0, inscripciones: [{ course: 'finanzas', level: 0 }, { course: 'ia', level: 2 }] };
+  const entregas = [entrega(1, 1), entrega(1, 1, { classCourse: 'ia', classLevel: 2 })];
+  const [fin] = calcularProgresos([ana], clases, entregas, AHORA);
+  const [ia] = calcularProgresos([ana], clases, entregas, AHORA, 'ia');
+  assert.deepEqual([fin.progress, fin.total], [1, 2]);
+  assert.deepEqual([ia.progress, ia.total], [1, 1]);
+  const [nada] = calcularProgresos([alumno('b@x.com', COLE)], clases, [], AHORA, 'ia');
+  assert.equal(nada.total, 0, 'quien no cursa IA no tiene clases de IA');
+});
+
+prueba('inscripciones: sin lista, el alumno está en Finanzas en su nivel', () => {
+  assert.deepEqual(inscripcionesDe({ level: 2 }), [{ course: 'finanzas', level: 2 }]);
+  assert.equal(nivelEn({ level: 1 }, 'ia'), undefined);
+  assert.equal(nivelEn({ inscripciones: [{ course: 'ia', level: 3 }] }, 'ia'), 3);
+  assert.equal(idDeCurso('Vida Adulta 6° año'), 'vida-adulta-6-ano');
+});
+
 // ── Contenido ───────────────────────────────────────────────────
 prueba('títulos, párrafos y saltos de línea', () => {
   assert.equal(
@@ -380,6 +420,29 @@ prueba('urgencia y vencimientos', () => {
   assert.equal(yaPaso('', AHORA), false);
   assert.equal(yaPaso('no es una fecha', AHORA), false);
   assert.equal(todaviaNo(undefined, AHORA), false);
+});
+
+prueba('borrar un curso cuenta sólo lo suyo, nunca Finanzas', () => {
+  const datos = {
+    classes: [{ isSyllabus: true }, { course: 'ia', isSyllabus: true }, { course: 'ia', isSyllabus: false }, { course: 'ia', isSyllabus: false }],
+    submissions: [{}, { classCourse: 'ia' }],
+    usuarios: [{}, { inscripciones: [{ course: 'ia', level: 0 }] }, { inscripciones: [{ course: 'finanzas', level: 1 }] }],
+  };
+  assert.deepEqual(alcanceDeCurso('ia', datos), { plantillas: 1, publicadas: 2, entregas: 1, alumnos: 1 });
+  assert.deepEqual(alcanceDeCurso('otro', datos), { plantillas: 0, publicadas: 0, entregas: 0, alumnos: 0 });
+});
+
+prueba('los nombres editados de niveles y módulos se usan, y vacíos vuelven a los de siempre', () => {
+  const ia = { id: 'ia', name: 'IA', desc: '', accent: 'x', niveles: [{ name: 'Arranque' }, { name: '  ' }], modulos: { '0_2': 'Prompts', '0_3': ' ' } };
+  assert.equal(etiquetaNivel(ia, 0), 'Nivel 0 · Arranque');
+  assert.equal(etiquetaNivel(ia, 1), 'Nivel 1');
+  assert.equal(nombreModulo(ia, 0, 2), 'Prompts');
+  assert.equal(nombreModulo(ia, 0, 3), 'Bloque Pedagógico 3');
+  // Finanzas editada: se combina con la de siempre y sigue primera.
+  const lista = listaDeCursos([ia, { id: 'finanzas', name: 'Finanzas', desc: '', accent: 'y' }]);
+  assert.equal(lista[0].id, 'finanzas');
+  assert.equal(lista[0].name, 'Finanzas');
+  assert.equal(lista.length, 2);
 });
 
 // ── Resultado ───────────────────────────────────────────────────

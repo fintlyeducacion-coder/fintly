@@ -4,13 +4,17 @@ import {
   Plus, BookOpen, Trash2, Users, School, ChevronRight, CheckCircle2, Clock,
   ChevronDown, Check, TrendingUp, Sparkles, UserCheck, UserX, AlertCircle,
   BarChart3, Award, Calendar, Layers, ShieldAlert, ArrowUpRight,
-  AlertTriangle, ArrowLeft, Search
+  AlertTriangle, ArrowLeft, Search, Pencil
 } from 'lucide-react';
-import { ClassItem, Student, ActivitySubmission, User } from '../types';
+import { ClassItem, Student, ActivitySubmission, User, Curso, Inscripcion } from '../types';
+import { FINANZAS, CURSO_FINANZAS, cursoDe, inscripcionesDe, nivelesDe, nombreModulo } from '../lib/cursos';
+import NuevoCurso from './NuevoCurso';
+import EditarCurso from './EditarCurso';
 import ClassModal from './ClassModal';
+import PublicarClase from './PublicarClase';
 import { COURSES, ASSOCIATED_SCHOOLS, CLASES_POR_MODULO } from '../data';
 import { entregaEsDeLaClase } from '../classKeys';
-import { aInputLocal } from '../lib/fechas';
+import { aInputLocal, fechaConHora, todaviaNo } from '../lib/fechas';
 
 interface AdminPanelProps {
   classes: ClassItem[];
@@ -18,9 +22,19 @@ interface AdminPanelProps {
   submissions: ActivitySubmission[];
   allUsers?: User[];
   onSaveClass: (cl: ClassItem, oldKey?: { level: number; module?: number; week: number }) => void | Promise<void>;
-  onDeleteClass: (level: number, week: number, school?: string, id?: string, module?: number) => void | Promise<void>;
-  onAssignClass: (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => void;
-  onApproveUser?: (email: string, targetRole: 'alumno' | 'directivo', level?: number, school?: string) => void | Promise<void>;
+  onDeleteClass: (level: number, week: number, school?: string, id?: string, module?: number, course?: string) => void | Promise<void>;
+  onAssignClass: (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => void | Promise<void>;
+  onApproveUser?: (email: string, targetRole: 'alumno' | 'directivo', level?: number, school?: string, inscripciones?: Inscripcion[]) => void | Promise<void>;
+  /** Todos los cursos: Finanzas y los creados. */
+  cursos?: Curso[];
+  /** Crear un curso (sólo admin). Devuelve su id. */
+  onCreateCourse?: (datos: { name: string; desc: string; accent: string }) => Promise<string>;
+  /** Guardar los datos de un curso, Finanzas incluido (sólo admin). */
+  onUpdateCourse?: (curso: Curso) => Promise<void>;
+  /** Borrar un curso creado con sus clases y entregas (sólo admin). */
+  onDeleteCourse?: (id: string) => Promise<void>;
+  /** Cuánto se borra junto con un curso. */
+  alcanceDeBorradoDeCurso?: (id: string) => { plantillas: number; publicadas: number; entregas: number; alumnos: number };
   onDeleteUser?: (email: string) => void | Promise<void>;
   /** Migración: renombra un colegio en clases, usuarios y alumnos. */
   onRenameSchool?: (viejo: string, nuevo: string) => Promise<{ clases: number; usuarios: number; alumnos: number }>;
@@ -39,19 +53,33 @@ export default function AdminPanel({
   onApproveUser,
   onDeleteUser,
   onRenameSchool,
-  onBackfillSubmissionSchools
+  onBackfillSubmissionSchools,
+  cursos = [CURSO_FINANZAS],
+  onCreateCourse,
+  onUpdateCourse,
+  onDeleteCourse,
+  alcanceDeBorradoDeCurso
 }: AdminPanelProps) {
+  const nombreCurso = (id: string) => cursos.find((c) => c.id === id)?.name ?? (id === FINANZAS ? CURSO_FINANZAS.name : id);
   const [activeTab, setActiveTab] = useState<'negocio' | 'clases' | 'aprobaciones'>('negocio');
 
   // Biblioteca / Syllabus state
+  // Curso de la Biblioteca que se está mirando. Finanzas, salvo que se elija otro.
+  const [cursoBiblio, setCursoBiblio] = useState<string>(FINANZAS);
+  const [creandoCurso, setCreandoCurso] = useState(false);
+  const [editandoCurso, setEditandoCurso] = useState(false);
+  const cursoInfo = cursos.find((c) => c.id === cursoBiblio) ?? CURSO_FINANZAS;
   const [selectedSyllabusLevel, setSelectedSyllabusLevel] = useState<number>(0);
   const [selectedModule, setSelectedModule] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
+  // Clase que se está publicando o reprogramando desde la Biblioteca
+  const [publicando, setPublicando] = useState<ClassItem | null>(null);
 
   // Aprobación de usuarios state
   const [approvalRoles, setApprovalRoles] = useState<Record<string, 'alumno' | 'directivo'>>({});
   const [approvalLevels, setApprovalLevels] = useState<Record<string, number>>({});
+  const [approvalCourses, setApprovalCourses] = useState<Record<string, string>>({});
   const [approvalSchools, setApprovalSchools] = useState<Record<string, string>>({});
 
   // Edicion inline de un usuario ya habilitado (colegio y nivel)
@@ -92,7 +120,8 @@ export default function AdminPanel({
         !c.isSyllabus &&
         c.level === cl.level &&
         c.week === cl.week &&
-        (c.module ?? 1) === (cl.module ?? 1)
+        (c.module ?? 1) === (cl.module ?? 1) &&
+        cursoDe(c) === cursoDe(cl)
     );
     const colegios = Array.from(new Set(copias.map((c) => c.school).filter(Boolean)));
 
@@ -164,19 +193,37 @@ export default function AdminPanel({
   };
   const [editingUser, setEditingUser] = useState<string | null>(null);
   const [editSchool, setEditSchool] = useState<string>('');
-  const [editLevel, setEditLevel] = useState<number>(0);
+  // Cursos que hace el alumno que se está editando, cada uno con su nivel
+  const [editInscripciones, setEditInscripciones] = useState<Inscripcion[]>([]);
 
   const abrirEdicion = (u: User) => {
     setEditingUser(u.email);
     setEditSchool(ASSOCIATED_SCHOOLS.includes(u.school || '') ? (u.school as string) : ASSOCIATED_SCHOOLS[0]);
-    setEditLevel(u.level ?? 0);
+    setEditInscripciones(inscripcionesDe(u));
   };
 
   const guardarEdicion = async (u: User) => {
     if (!onApproveUser) return;
+    if (u.role === 'alumno') {
+      if (editInscripciones.length === 0) {
+        alert('El alumno tiene que estar al menos en un curso.');
+        return;
+      }
+      if (new Set(editInscripciones.map((i) => i.course)).size !== editInscripciones.length) {
+        alert('Hay un curso repetido. Cada curso va una sola vez, con su nivel.');
+        return;
+      }
+    }
+    const nivelFinanzas = editInscripciones.find((i) => i.course === FINANZAS)?.level;
     // Reutilizamos el flujo de aprobacion: ya escribe rol, nivel y colegio en users y students
     try {
-      await onApproveUser(u.email, u.role as 'alumno' | 'directivo', editLevel, editSchool);
+      await onApproveUser(
+        u.email,
+        u.role as 'alumno' | 'directivo',
+        nivelFinanzas,
+        editSchool,
+        u.role === 'alumno' ? editInscripciones : undefined
+      );
       setEditingUser(null);
     } catch (e) {
       console.error('No se pudo guardar el cambio:', e);
@@ -279,19 +326,12 @@ export default function AdminPanel({
     setModalOpen(true);
   };
 
-  const handleCreateSyllabusClass = (level: number, mod: number) => {
-    const moduleClasses = classes.filter(cl =>
-      cl.isSyllabus && cl.level === level && cl.module === mod
-    );
-    const usedWeeks = moduleClasses.map(cl => cl.week);
-    let nextWeek = 1;
-    for (let w = 1; w <= CLASES_POR_MODULO; w++) {
-      if (!usedWeeks.includes(w)) {
-        nextWeek = w;
-        break;
-      }
-    }
-
+  /**
+   * Abrir el editor para crear la clase `week` del módulo.
+   * Recibe el lugar exacto: antes buscaba el primero libre y, con el módulo
+   * completo, abría la clase 1 como si fuera nueva y al guardar la pisaba.
+   */
+  const handleCreateSyllabusClass = (level: number, mod: number, nextWeek: number) => {
     setEditingClass({
       level,
       module: mod,
@@ -304,7 +344,9 @@ export default function AdminPanel({
       slidesUrl: '',
       actTitle: '',
       actDesc: '',
-      isSyllabus: true
+      isSyllabus: true,
+      // Finanzas no guarda el curso (es lo que no lo tiene); los demás, sí.
+      course: cursoBiblio === FINANZAS ? undefined : cursoBiblio
     });
     setModalOpen(true);
   };
@@ -328,16 +370,69 @@ export default function AdminPanel({
     }
   };
 
+  // ─── ORGANIZACIÓN DE LA BIBLIOTECA ────────────────────────────────────────
+  // Las clases guardadas antes de que existieran los módulos no tienen
+  // ese dato: cuentan como del módulo 1. Antes no aparecían en ningún lado.
+  const plantillasDelModulo = (level: number, mod: number) =>
+    classes
+      .filter((cl) => cl.isSyllabus && cursoDe(cl) === cursoBiblio && cl.level === level && (cl.module ?? 1) === mod)
+      .sort((a, b) => a.week - b.week);
+
+  /** Copias publicadas de una plantilla, una por colegio. */
+  const copiasDe = (cl: ClassItem) =>
+    classes.filter(
+      (c) =>
+        !c.isSyllabus &&
+        Boolean(c.school) &&
+        c.level === cl.level &&
+        c.week === cl.week &&
+        (c.module ?? 1) === (cl.module ?? 1) &&
+        cursoDe(c) === cursoDe(cl)
+    );
+
+  /** Resumen de dónde y cuándo está publicada una clase. */
+  const estadoDePublicacion = (cl: ClassItem) => {
+    const copias = copiasDe(cl);
+    if (copias.length === 0) return { tono: 'gris', texto: 'Sin publicar', fechas: '' };
+    const aperturas = new Set(copias.map((c) => c.unlockAt || ''));
+    const limites = new Set(copias.map((c) => c.deadline || ''));
+    const programada = copias.every((c) => todaviaNo(c.unlockAt));
+    const enColegios = copias.length === ASSOCIATED_SCHOOLS.length ? 'todos los colegios' : `${copias.length} ${copias.length === 1 ? 'colegio' : 'colegios'}`;
+    const ref = copias[0];
+    const fechas =
+      aperturas.size > 1 || limites.size > 1
+        ? 'Fechas distintas según el colegio'
+        : `${programada ? 'Se abre' : 'Abrió'} el ${fechaConHora(ref.unlockAt) || '—'} · entrega hasta el ${fechaConHora(ref.deadline) || '—'}`;
+    return {
+      tono: programada ? 'ambar' : 'verde',
+      texto: `${programada ? 'Programada' : 'Publicada'} en ${enColegios}`,
+      fechas,
+    };
+  };
+
+  const COLOR_ESTADO: Record<string, string> = {
+    gris: 'bg-white/5 text-gray-400 border-white/10 light:bg-neutral-100 light:text-neutral-600 light:border-neutral-200',
+    verde: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 light:text-emerald-700',
+    ambar: 'bg-amber-500/10 text-amber-400 border-amber-500/20 light:text-amber-700',
+  };
+
   // ─── HANDLERS DE USUARIOS ─────────────────────────────────────────────────
   const handleApprove = async (email: string) => {
     const role = approvalRoles[email] || 'alumno';
     const level = approvalLevels[email] ?? 0;
+    const course = approvalCourses[email] || FINANZAS;
     const school = approvalSchools[email] || ASSOCIATED_SCHOOLS[0];
 
     setProcessingUser(email);
     try {
       if (onApproveUser) {
-        await onApproveUser(email, role, level, school);
+        await onApproveUser(
+          email,
+          role,
+          course === FINANZAS ? level : undefined,
+          school,
+          role === 'alumno' ? [{ course, level }] : undefined
+        );
       }
     } catch (e) {
       console.error("Error approving user:", e);
@@ -658,9 +753,46 @@ export default function AdminPanel({
               </div>
             </div>
 
+            {/* Course Selector */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="flex bg-[#14132b]/40 light:bg-neutral-100 p-1 rounded-2xl border border-white/5 light:border-neutral-200 gap-1 max-w-full overflow-x-auto no-scrollbar">
+                {cursos.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => { setCursoBiblio(c.id); setSelectedSyllabusLevel(0); setSelectedModule(null); }}
+                    className={`px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap cursor-pointer transition-all ${
+                      cursoBiblio === c.id
+                        ? `bg-gradient-to-r ${c.accent} text-white shadow-md`
+                        : 'text-gray-400 light:text-neutral-600 hover:text-white'
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+              {onCreateCourse && (
+                <button
+                  onClick={() => setCreandoCurso(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-violet-500/25 text-violet-400 light:text-violet-600 hover:bg-violet-500/10 text-xs font-semibold cursor-pointer transition-colors shrink-0"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Nuevo curso</span>
+                </button>
+              )}
+              {onUpdateCourse && (
+                <button
+                  onClick={() => setEditandoCurso(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border border-white/10 light:border-neutral-300 text-gray-300 light:text-neutral-600 hover:bg-white/5 light:hover:bg-neutral-100 text-xs font-semibold cursor-pointer transition-colors shrink-0"
+                >
+                  <Pencil className="w-4 h-4" />
+                  <span>Editar curso</span>
+                </button>
+              )}
+            </div>
+
             {/* Level Selector */}
             <div className="flex bg-[#14132b]/40 light:bg-neutral-100 p-1 rounded-2xl border border-white/5 light:border-neutral-200 gap-1 max-w-full overflow-x-auto no-scrollbar">
-              {COURSES.map(course => (
+              {nivelesDe(cursoInfo).map(course => (
                 <button
                   key={course.id}
                   onClick={() => { setSelectedSyllabusLevel(course.id); setSelectedModule(null); }}
@@ -670,7 +802,7 @@ export default function AdminPanel({
                       : 'text-gray-400 light:text-neutral-600 hover:text-white'
                   }`}
                 >
-                  Nivel {course.id} · {course.name}
+                  {course.name ? `Nivel ${course.id} · ${course.name}` : `Nivel ${course.id}`}
                 </button>
               ))}
             </div>
@@ -679,7 +811,8 @@ export default function AdminPanel({
             {selectedModule === null ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[1, 2, 3, 4].map(mod => {
-                  const modClasses = classes.filter(cl => cl.isSyllabus && cl.level === selectedSyllabusLevel && cl.module === mod);
+                  const modClasses = plantillasDelModulo(selectedSyllabusLevel, mod);
+                  const publicadas = modClasses.filter((cl) => copiasDe(cl).length > 0).length;
                   return (
                     <div
                       key={mod}
@@ -691,10 +824,10 @@ export default function AdminPanel({
                           Módulo {mod}
                         </span>
                         <h3 className="font-bold text-white light:text-neutral-900 text-base mt-1">
-                          Bloque Pedagógico {mod}
+                          {nombreModulo(cursoInfo, selectedSyllabusLevel, mod)}
                         </h3>
                         <p className="text-xs text-gray-400 light:text-neutral-500 mt-1">
-                          {modClasses.length} clases estructuradas
+                          {modClasses.length} de {CLASES_POR_MODULO} clases cargadas · {publicadas} publicada{publicadas === 1 ? '' : 's'}
                         </p>
                       </div>
                       <div className="flex items-center text-xs text-violet-400 font-semibold gap-1">
@@ -714,37 +847,65 @@ export default function AdminPanel({
                   >
                     <span>← Volver a los módulos</span>
                   </button>
-                  <button
-                    onClick={() => handleCreateSyllabusClass(selectedSyllabusLevel, selectedModule)}
-                    className="liquid-glass-btn inline-flex items-center gap-1.5 px-4 py-2 text-xs"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Nueva Clase en Módulo {selectedModule}</span>
-                  </button>
+                  <span className="text-[11px] text-gray-500 font-mono">
+                    Módulo {selectedModule} · {plantillasDelModulo(selectedSyllabusLevel, selectedModule).length} de {CLASES_POR_MODULO} clases
+                  </span>
                 </div>
 
                 <div className="space-y-3">
-                  {classes
-                    .filter(cl => cl.isSyllabus && cl.level === selectedSyllabusLevel && cl.module === selectedModule)
-                    .sort((a, b) => a.week - b.week)
-                    .map(cl => (
+                  {Array.from({ length: CLASES_POR_MODULO }, (_, i) => i + 1).map((numero) => {
+                    const cl = plantillasDelModulo(selectedSyllabusLevel, selectedModule).find((c) => c.week === numero);
+
+                    if (!cl) {
+                      return (
+                        <div
+                          key={`vacia-${numero}`}
+                          className="rounded-xl p-4 flex items-center justify-between gap-4 border border-dashed border-white/10 light:border-neutral-300"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-white/5 light:bg-neutral-100 text-gray-500 flex items-center justify-center font-mono font-bold text-xs">
+                              S{numero}
+                            </div>
+                            <span className="text-sm text-gray-500 light:text-neutral-500">Clase {numero} todavía sin cargar</span>
+                          </div>
+                          <button
+                            onClick={() => handleCreateSyllabusClass(selectedSyllabusLevel, selectedModule, numero)}
+                            className="liquid-glass-btn inline-flex items-center gap-1.5 px-4 py-2 text-xs"
+                          >
+                            <Plus className="w-4 h-4" />
+                            <span>Crear clase {numero}</span>
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    const estado = estadoDePublicacion(cl);
+                    return (
                       <div
-                        key={`${cl.level}-${cl.week}`}
-                        className="liquid-glass rounded-xl p-4 flex items-center justify-between gap-4"
+                        key={`clase-${numero}`}
+                        className="liquid-glass rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                       >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-violet-500/10 text-violet-400 flex items-center justify-center font-mono font-bold text-xs">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-violet-500/10 text-violet-400 flex items-center justify-center font-mono font-bold text-xs shrink-0">
                             S{cl.week}
                           </div>
-                          <div>
-                            <h4 className="font-bold text-white light:text-neutral-900 text-sm">{cl.title || 'Clase sin título'}</h4>
-                            <span className="text-[11px] text-gray-500 font-mono">
-                              {cl.actTitle ? `Actividad: ${cl.actTitle}` : 'Sin actividad práctica'}
-                            </span>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-white light:text-neutral-900 text-sm truncate">{cl.title || 'Clase sin título'}</h4>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              <span className={`px-2 py-0.5 rounded-md border text-[10px] font-mono font-bold uppercase ${COLOR_ESTADO[estado.tono]}`}>
+                                {estado.texto}
+                              </span>
+                              <span className="text-[11px] text-gray-500 font-mono">
+                                {cl.actTitle ? `Actividad: ${cl.actTitle}` : 'Sin actividad práctica'}
+                              </span>
+                            </div>
+                            {estado.fechas && (
+                              <p className="text-[11px] text-gray-500 light:text-neutral-500 mt-1">{estado.fechas}</p>
+                            )}
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
                             onClick={() => handleEditClass(cl)}
                             className="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 text-xs text-gray-300 hover:text-white cursor-pointer"
@@ -752,9 +913,15 @@ export default function AdminPanel({
                             Editar
                           </button>
                           <button
+                            onClick={() => setPublicando(cl)}
+                            className="px-3 py-1.5 rounded-lg border border-violet-500/25 text-violet-400 light:text-violet-600 hover:bg-violet-500/10 text-xs font-semibold cursor-pointer"
+                          >
+                            {copiasDe(cl).length > 0 ? 'Reprogramar' : 'Publicar'}
+                          </button>
+                          <button
                             onClick={() => {
                               if (!confirmarBorradoClase(cl)) return;
-                              Promise.resolve(onDeleteClass(cl.level, cl.week, undefined, cl.id, cl.module)).catch(() =>
+                              Promise.resolve(onDeleteClass(cl.level, cl.week, undefined, cl.id, cl.module, cl.course)).catch(() =>
                                 alert('No se pudo eliminar la clase. Revisá la conexión y probá de nuevo.')
                               );
                             }}
@@ -765,7 +932,8 @@ export default function AdminPanel({
                           </button>
                         </div>
                       </div>
-                    ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -853,6 +1021,19 @@ export default function AdminPanel({
                             <option value="alumno">Rol: Alumno</option>
                             <option value="directivo">Rol: Directivo</option>
                           </select>
+
+                          {/* Course Selector (solo si es alumno y hay más de un curso) */}
+                          {selectedRole === 'alumno' && cursos.length > 1 && (
+                            <select
+                              value={approvalCourses[u.email] || FINANZAS}
+                              onChange={e => setApprovalCourses(prev => ({ ...prev, [u.email]: e.target.value }))}
+                              className="px-3 py-1.5 rounded-xl bg-neutral-900 light:bg-neutral-100 border border-white/10 light:border-neutral-300 text-xs text-white light:text-neutral-900 font-medium"
+                            >
+                              {cursos.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          )}
 
                           {/* Level Selector (solo si es alumno) */}
                           {selectedRole === 'alumno' && (
@@ -1054,10 +1235,14 @@ export default function AdminPanel({
                               <span>{u.school}</span>
                             </>
                           )}
-                          {u.level !== undefined && u.role === 'alumno' && (
+                          {u.role === 'alumno' && (
                             <>
                               <span>•</span>
-                              <span>Nivel {u.level}</span>
+                              <span>
+                                {inscripcionesDe(u)
+                                  .map((i) => (cursos.length > 1 ? `${nombreCurso(i.course)} N${i.level}` : `Nivel ${i.level}`))
+                                  .join(', ')}
+                              </span>
                             </>
                           )}
                         </div>
@@ -1101,18 +1286,55 @@ export default function AdminPanel({
                         </label>
 
                         {u.role === 'alumno' && (
-                          <label className="sm:w-40 shrink-0">
-                            <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500 mb-1">Nivel</span>
-                            <select
-                              value={editLevel}
-                              onChange={e => setEditLevel(Number(e.target.value))}
-                              className="w-full bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-lg px-3 py-2 text-xs text-white light:text-neutral-800 cursor-pointer"
-                            >
-                              {COURSES.map(c => (
-                                <option key={c.id} value={c.id}>Nivel {c.id}</option>
-                              ))}
-                            </select>
-                          </label>
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            <span className="block text-[10px] font-mono font-bold uppercase tracking-widest text-gray-500">
+                              {cursos.length > 1 ? 'Cursos y nivel' : 'Nivel'}
+                            </span>
+                            {editInscripciones.map((ins, idx) => (
+                              <div key={idx} className="flex items-center gap-2">
+                                {cursos.length > 1 && (
+                                  <select
+                                    value={ins.course}
+                                    onChange={e => setEditInscripciones(prev => prev.map((x, i) => i === idx ? { ...x, course: e.target.value } : x))}
+                                    className="flex-1 min-w-0 bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-lg px-3 py-2 text-xs text-white light:text-neutral-800 cursor-pointer"
+                                  >
+                                    {cursos.map(c => (
+                                      <option key={c.id} value={c.id}>{c.name}</option>
+                                    ))}
+                                  </select>
+                                )}
+                                <select
+                                  value={ins.level}
+                                  onChange={e => setEditInscripciones(prev => prev.map((x, i) => i === idx ? { ...x, level: Number(e.target.value) } : x))}
+                                  className="w-28 shrink-0 bg-neutral-900/60 light:bg-white border border-white/10 light:border-neutral-200 rounded-lg px-3 py-2 text-xs text-white light:text-neutral-800 cursor-pointer"
+                                >
+                                  {[0, 1, 2, 3].map(n => (
+                                    <option key={n} value={n}>Nivel {n}</option>
+                                  ))}
+                                </select>
+                                {editInscripciones.length > 1 && (
+                                  <button
+                                    onClick={() => setEditInscripciones(prev => prev.filter((_, i) => i !== idx))}
+                                    className="p-1.5 text-gray-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 cursor-pointer shrink-0"
+                                    title="Sacarlo de este curso"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            {cursos.length > 1 && editInscripciones.length < cursos.length && (
+                              <button
+                                onClick={() => {
+                                  const libre = cursos.find(c => !editInscripciones.some(i => i.course === c.id));
+                                  if (libre) setEditInscripciones(prev => [...prev, { course: libre.id, level: 0 }]);
+                                }}
+                                className="text-[11px] font-semibold text-violet-400 light:text-violet-600 hover:underline cursor-pointer"
+                              >
+                                + Agregar otro curso
+                              </button>
+                            )}
+                          </div>
                         )}
 
                         <div className="flex items-center gap-2 shrink-0">
@@ -1252,6 +1474,40 @@ export default function AdminPanel({
         )}
       </AnimatePresence>
 
+      {/* Crear un curso (sólo admin) */}
+      {creandoCurso && onCreateCourse && (
+        <NuevoCurso
+          existentes={cursos}
+          onClose={() => setCreandoCurso(false)}
+          onCreate={onCreateCourse}
+          onCreado={(id) => { setCursoBiblio(id); setSelectedSyllabusLevel(0); setSelectedModule(null); }}
+        />
+      )}
+
+      {/* Editar o borrar el curso elegido en la Biblioteca (sólo admin) */}
+      {editandoCurso && onUpdateCourse && (
+        <EditarCurso
+          key={cursoInfo.id}
+          curso={cursoInfo}
+          existentes={cursos}
+          onClose={() => setEditandoCurso(false)}
+          onSave={onUpdateCourse}
+          onDelete={cursoInfo.id === FINANZAS ? undefined : onDeleteCourse}
+          alcance={alcanceDeBorradoDeCurso?.(cursoInfo.id)}
+          onBorrado={() => { setCursoBiblio(FINANZAS); setSelectedSyllabusLevel(0); setSelectedModule(null); }}
+        />
+      )}
+
+      {/* Publicar / reprogramar desde la Biblioteca */}
+      {publicando && (
+        <PublicarClase
+          clase={publicando}
+          copias={copiasDe(publicando)}
+          onClose={() => setPublicando(null)}
+          onPublish={onAssignClass}
+        />
+      )}
+
       {/* Class Editor Modal */}
       <AnimatePresence>
         {modalOpen && (
@@ -1265,6 +1521,7 @@ export default function AdminPanel({
             initialClass={editingClass}
             associatedSchools={ASSOCIATED_SCHOOLS}
             onAssignClass={onAssignClass}
+            curso={cursoInfo}
           />
         )}
       </AnimatePresence>

@@ -14,15 +14,18 @@ const COURSE_ICONS: Record<string, LucideIcon> = {
   inversiones: LineChart,
   'vida-pro': Briefcase,
 };
-import { ClassItem, User, ActivitySubmission } from '../types';
-import { COURSES, UPCOMING_COURSES, normalizarNota } from '../data';
+import { ClassItem, User, ActivitySubmission, Curso } from '../types';
+import { FINANZAS, CURSO_FINANZAS, cursoDe, inscripcionesDe, nivelesDe } from '../lib/cursos';
+import { UPCOMING_COURSES, normalizarNota } from '../data';
 import { ordenEnNivel, entregaEsDeLaClase } from '../classKeys';
 
 interface Props {
   user: User;
   classes: ClassItem[];
   submissions: ActivitySubmission[];
-  onOpenClass: (level: number, module: number | undefined, week: number) => void;
+  /** Todos los cursos del campus (para nombres y colores). */
+  cursos?: Curso[];
+  onOpenClass: (level: number, module: number | undefined, week: number, course?: string) => void;
 }
 
 /* ── Progress Ring ──────────────────────────────────────────────── */
@@ -70,8 +73,15 @@ function StatCard({ label, value, sub, color, icon: Icon }: {
 }
 
 /* ── Main Component ─────────────────────────────────────────────── */
-export default function StudentDashboard({ user, classes, submissions, onOpenClass }: Props) {
-  const activeLevel    = user.level ?? 0;
+export default function StudentDashboard({ user, cursos = [CURSO_FINANZAS], classes, submissions, onOpenClass }: Props) {
+  // Un alumno puede hacer varios cursos, cada uno en su nivel. Si hace más de
+  // uno, elige cuál ver; si hace uno solo, ve lo mismo que siempre.
+  const inscripciones  = inscripcionesDe(user);
+  const [cursoElegido, setCursoElegido] = useState<string>(inscripciones[0]?.course ?? FINANZAS);
+  const inscripcion    = inscripciones.find((i) => i.course === cursoElegido) ?? inscripciones[0];
+  const cursoActual    = inscripcion?.course ?? FINANZAS;
+  const infoCurso      = cursos.find((c) => c.id === cursoActual);
+  const activeLevel    = inscripcion?.level ?? user.level ?? 0;
   const listRef        = useRef<HTMLDivElement>(null);
   const [search, setSearch]       = useState('');
   const [filter, setFilter]       = useState<'all' | 'pending' | 'done'>('all');
@@ -79,7 +89,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
   const mine = submissions.filter(s => s.studentEmail.toLowerCase() === user.email.toLowerCase());
 
   const courseClasses = classes
-    .filter(cl => cl.level === activeLevel && cl.school === user.school && !cl.isSyllabus)
+    .filter(cl => cl.level === activeLevel && cl.school === user.school && !cl.isSyllabus && cursoDe(cl) === cursoActual)
     // Orden real del recorrido: módulo 1 clases 1-8, módulo 2 clases 1-8, etc.
     // Ordenar solo por week mezclaría las cuatro "clase 1" de los cuatro módulos.
     .sort((a, b) => ordenEnNivel(a.module, a.week) - ordenEnNivel(b.module, b.week));
@@ -126,7 +136,15 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
   const pct        = total > 0 ? Math.round((doneCount / total) * 100) : 0;
 
   const nextClass  = courseClasses.find(cl => isOpen(cl) && !submitted(cl)) ?? null;
-  const course     = COURSES.find(c => c.id === activeLevel);
+  // Nombre y descripción del nivel (los que puso el admin, o los de siempre).
+  // Si el nivel no tiene nombre propio, se muestra el del curso.
+  const nivelInfo = nivelesDe(infoCurso ?? (cursoActual === FINANZAS ? CURSO_FINANZAS : undefined))[activeLevel];
+  const course = nivelInfo && {
+    id: activeLevel,
+    name: nivelInfo.name || infoCurso?.name || 'Curso',
+    desc: nivelInfo.desc,
+    accent: nivelInfo.accent,
+  };
 
   const fmt = (d: string) => !d ? '—' : new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' });
 
@@ -175,7 +193,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
       >
         <div className="space-y-1.5">
           <p className="text-[11px] font-mono font-bold uppercase tracking-widest text-slate-400 light:text-slate-600">
-            {user.school || 'Fintly Campus'} · Nivel {activeLevel}
+            {user.school || 'Fintly Campus'} · {cursoActual === FINANZAS ? `Nivel ${activeLevel}` : `${infoCurso?.name ?? 'Curso'} · Nivel ${activeLevel}`}
           </p>
           <h1 className="font-display text-3xl sm:text-4xl font-bold text-white light:text-slate-900 tracking-tight leading-tight">
             {saludo}, <span className="gradient-text-brand">{user.name.split(' ')[0]}</span>
@@ -200,6 +218,38 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
           <StatCard label="Progreso"    value={`${pct}%`}  sub="del curso"        color="sky"     icon={TrendingUp} />
         </div>
       </motion.div>
+
+      {/* ── SELECTOR DE CURSO (sólo si hace más de uno) ──── */}
+      {inscripciones.length > 1 && (
+        <div className="flex bg-white/[0.04] light:bg-slate-100 p-1 rounded-xl border border-white/[0.06] light:border-slate-200 gap-0.5 w-full sm:w-fit max-w-full overflow-x-auto no-scrollbar text-[12px]">
+          {inscripciones.map(({ course: id, level }) => {
+            const activo = id === cursoActual;
+            const nombre = cursos.find((c) => c.id === id)?.name ?? (id === FINANZAS ? CURSO_FINANZAS.name : id);
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setCursoElegido(id)}
+                className={`relative flex items-center gap-1.5 px-3.5 py-2 font-semibold rounded-lg cursor-pointer whitespace-nowrap transition-all ${
+                  activo ? 'text-white' : 'text-slate-400 light:text-slate-600 hover:text-slate-200 light:hover:text-slate-800'
+                }`}
+              >
+                {activo && (
+                  <motion.div
+                    layoutId="coursePill"
+                    className="absolute inset-0 bg-gradient-to-r from-violet-600 to-indigo-600 rounded-lg -z-10"
+                    transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">{nombre}</span>
+                <span className={`relative z-10 text-[10px] font-mono ${activo ? 'text-white/80' : 'text-slate-500'}`}>
+                  Nivel {level}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* ── COURSE + NEXT CLASS ──────────────────────────── */}
       {course && (
@@ -259,7 +309,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
           {nextClass ? (
             <motion.button
               type="button"
-              onClick={() => onOpenClass(nextClass.level, nextClass.module, nextClass.week)}
+              onClick={() => onOpenClass(nextClass.level, nextClass.module, nextClass.week, nextClass.course)}
               whileHover={{ y: -3, scale: 1.01 }}
               whileTap={{ scale: 0.98 }}
               className="surface rounded-2xl p-5 text-left flex flex-col justify-between cursor-pointer group relative overflow-hidden transition-all"
@@ -394,7 +444,7 @@ export default function StudentDashboard({ user, classes, submissions, onOpenCla
                   initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.035, duration: 0.28 }}
-                  onClick={() => open && onOpenClass(cl.level, cl.module, cl.week)}
+                  onClick={() => open && onOpenClass(cl.level, cl.module, cl.week, cl.course)}
                   className={`group flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-all duration-200 ${
                     done
                       ? 'bg-emerald-500/[0.04] border-emerald-500/[0.12] light:bg-emerald-50/60 light:border-emerald-200/60 cursor-pointer hover:bg-emerald-500/[0.07]'

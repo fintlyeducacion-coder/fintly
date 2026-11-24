@@ -7,7 +7,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ASSOCIATED_SCHOOLS, SIN_ASIGNAR, COLEGIO_INTERNO } from './data';
-import { ClassItem, User, Student, ActivitySubmission } from './types';
+import { ClassItem, User, Student, ActivitySubmission, Curso, Inscripcion } from './types';
+import { FINANZAS, alcanceDeCurso, cursoDe, idDeCurso, inscripcionesDe, listaDeCursos } from './lib/cursos';
 
 // Componentes modulares
 import Background from './components/Background';
@@ -28,6 +29,7 @@ import {
   getDocs,
   setDoc,
   deleteDoc,
+  writeBatch,
   onSnapshot,
   query,
   where
@@ -103,6 +105,11 @@ export default function App() {
 
   // Todos los usuarios registrados (para monitoreo y control de aprobaciones de staff)
   const [allUsers, setAllUsers] = useState<User[]>([]);
+
+  // Cursos creados por el admin. Finanzas no está acá: es el de siempre (lib/cursos.ts).
+  const [cursosCreados, setCursosCreados] = useState<Curso[]>([]);
+  // Sube cada vez que hay que volver a escuchar los cursos (ver el efecto 3B).
+  const [reintentoCursos, setReintentoCursos] = useState(0);
   
   // Clase activa que visualiza el estudiante en detalle
   const [activeClassItem, setActiveClassItem] = useState<ClassItem | null>(null);
@@ -334,12 +341,13 @@ export default function App() {
         where('school', '==', currentUser.school)
       );
     } else {
-      // Alumno: su colegio y su nivel.
+      // Alumno: las clases de su colegio. Ya no se filtra por nivel: puede
+      // cursar varios cursos, cada uno en un nivel distinto. Las reglas de
+      // seguridad ya limitan la lectura a su colegio.
       if (!currentUser.school) { setClasses([]); return; }
       classesQuery = query(
         collection(db, 'classes'),
-        where('school', '==', currentUser.school),
-        where('level', '==', currentUser.level ?? 0)
+        where('school', '==', currentUser.school)
       );
     }
 
@@ -409,6 +417,39 @@ export default function App() {
 
     return () => unsubscribe();
   }, [currentUser, authInitialized]);
+
+  // --- 3B. ESCUCHAR LOS CURSOS ---
+  // Si las reglas todavía no habilitan la colección (o falla la lectura), el
+  // campus sigue funcionando con Finanzas solo.
+  useEffect(() => {
+    if (!currentUser || !authInitialized || currentUser.role === 'pausado') {
+      setCursosCreados([]);
+      return;
+    }
+    let reintento: number | undefined;
+    const unsubscribe = onSnapshot(
+      collection(db, 'courses'),
+      (snapshot) => {
+        const lista: Curso[] = [];
+        snapshot.forEach((d) => lista.push({ ...(d.data() as Curso), id: d.id }));
+        setCursosCreados(lista);
+      },
+      (error) => {
+        // Si Firebase rechaza la lectura, deja de escuchar para siempre. Pasa,
+        // por ejemplo, si la sesión ya estaba abierta cuando se publicaron las
+        // reglas: la lista quedaba vacía hasta recargar la página. Se vuelve a
+        // intentar cada 10 segundos (sin borrar lo que ya se tenía).
+        console.warn('No se pudieron leer los cursos; se reintenta en 10 s:', error);
+        reintento = window.setTimeout(() => setReintentoCursos((n) => n + 1), 10000);
+      }
+    );
+    return () => {
+      unsubscribe();
+      if (reintento !== undefined) window.clearTimeout(reintento);
+    };
+  }, [currentUser?.email, currentUser?.role, authInitialized, reintentoCursos]);
+
+  const cursos = useMemo(() => listaDeCursos(cursosCreados), [cursosCreados]);
 
   // --- 4A. ESCUCHAR EL PROPIO PERFIL EN VIVO ---
   //
@@ -620,13 +661,17 @@ export default function App() {
    * Lo usan la campanita y la apertura de clases: antes la campanita dejaba
    * entrar a clases que el panel mostraba con candado.
    */
-  const pasosAlumno = useMemo(
-    () =>
-      currentUser?.role === 'alumno'
-        ? construirRecorrido(classes, submissions, currentUser)
-        : [],
-    [currentUser, classes, submissions]
-  );
+  const pasosAlumno = useMemo(() => {
+    if (currentUser?.role !== 'alumno') return [];
+    // Un recorrido por cada curso que hace, con su nivel en ese curso.
+    return inscripcionesDe(currentUser).flatMap(({ course, level }) =>
+      construirRecorrido(
+        classes.filter((cl) => cursoDe(cl) === course),
+        submissions,
+        { ...currentUser, level }
+      )
+    );
+  }, [currentUser, classes, submissions]);
   const clasesQuePuedeAbrir = useMemo(
     () => pasosAlumno.filter(sePuedeAbrir).map((p) => p.clase),
     [pasosAlumno]
@@ -720,8 +765,10 @@ export default function App() {
    * y devuelve la primera. El alumno tocaba una clase y se le abría otra,
    * y después entregaba ahí, porque la entrega usa activeClassItem.
    */
-  const handleOpenClass = (level: number, module: number | undefined, week: number) => {
-    const mismoModulo = (cl: ClassItem) => (cl.module ?? 1) === (module ?? 1);
+  const handleOpenClass = (level: number, module: number | undefined, week: number, course?: string) => {
+    // Misma clase = mismo curso y mismo módulo: la "clase 1" existe en todos.
+    const mismoModulo = (cl: ClassItem) =>
+      (cl.module ?? 1) === (module ?? 1) && cursoDe(cl) === (course || FINANZAS);
 
     if (currentUser?.role === 'alumno') {
       const paso = pasosAlumno.find(
@@ -775,6 +822,7 @@ export default function App() {
       classLevel: activeClassItem.level,
       classModule: activeClassItem.module ?? 1,
       classWeek: activeClassItem.week,
+      classCourse: activeClassItem.course,
       studentEmail: currentUser.email.toLowerCase(),
       // El colegio queda grabado en la entrega para poder aislarla por
       // institución, tanto al consultarla como en las reglas de seguridad.
@@ -784,7 +832,7 @@ export default function App() {
     };
 
     try {
-      const docId = submissionId(currentUser.email, activeClassItem.level, activeClassItem.module, activeClassItem.week);
+      const docId = submissionId(currentUser.email, activeClassItem.level, activeClassItem.module, activeClassItem.week, activeClassItem.course);
       await setDoc(doc(db, 'submissions', docId), newSubmission);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'submissions');
@@ -798,13 +846,13 @@ export default function App() {
   const handleSaveClass = async (classItem: ClassItem, oldKey?: { level: number; module?: number; week: number }) => {
     try {
       const docId = classItem.isSyllabus 
-        ? syllabusId(classItem.level, classItem.module, classItem.week)
-        : assignedId(classItem.school || '', classItem.level, classItem.module, classItem.week);
+        ? syllabusId(classItem.level, classItem.module, classItem.week, classItem.course)
+        : assignedId(classItem.school || '', classItem.level, classItem.module, classItem.week, classItem.course);
 
       if (oldKey && (oldKey.level !== classItem.level || oldKey.module !== classItem.module || oldKey.week !== classItem.week)) {
         const oldDocId = classItem.isSyllabus 
-          ? syllabusId(oldKey.level, oldKey.module, oldKey.week)
-          : assignedId(classItem.school || '', oldKey.level, oldKey.module, oldKey.week);
+          ? syllabusId(oldKey.level, oldKey.module, oldKey.week, classItem.course)
+          : assignedId(classItem.school || '', oldKey.level, oldKey.module, oldKey.week, classItem.course);
         await deleteDoc(doc(db, 'classes', oldDocId));
       }
 
@@ -826,7 +874,7 @@ export default function App() {
   const handleAssignClass = async (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => {
     try {
       for (const schoolName of schools) {
-        const docId = assignedId(schoolName, sourceClass.level, sourceClass.module, sourceClass.week);
+        const docId = assignedId(schoolName, sourceClass.level, sourceClass.module, sourceClass.week, sourceClass.course);
         const assignedItem: ClassItem = {
           ...sourceClass,
           isSyllabus: false,
@@ -849,8 +897,10 @@ export default function App() {
     week: number,
     school?: string,
     id?: string,
-    module?: number
+    module?: number,
+    course?: string
   ) => {
+    const curso = course || FINANZAS;
     try {
       // 1. Por ID exacto si lo tenemos
       if (id) {
@@ -859,14 +909,15 @@ export default function App() {
 
       // 2. El ID actual (con módulo)
       const idActual = school
-        ? assignedId(school, level, module, week)
-        : syllabusId(level, module, week);
+        ? assignedId(school, level, module, week, course)
+        : syllabusId(level, module, week, course);
       await deleteDoc(doc(db, 'classes', idActual)).catch(() => {});
 
       // 3. Variantes históricas sin módulo, para limpiar lo que quedó de antes
       // Sólo al borrar una clase del módulo 1: para otro módulo, se llevaría
       // puesta la clase vieja del mismo número, que es del módulo 1.
-      if ((module ?? 1) === 1) {
+      // Los IDs viejos son todos de Finanzas.
+      if ((module ?? 1) === 1 && curso === FINANZAS) {
         for (const viejo of idsHistoricos(school, level, week)) {
           await deleteDoc(doc(db, 'classes', viejo)).catch(() => {});
         }
@@ -881,10 +932,11 @@ export default function App() {
             !c.isSyllabus &&
             c.level === level &&
             c.week === week &&
-            (c.module ?? 1) === (module ?? 1)
+            (c.module ?? 1) === (module ?? 1) &&
+            cursoDe(c) === curso
         );
         for (const copia of copias) {
-          const idCopia = copia.id || assignedId(copia.school || '', copia.level, copia.module, copia.week);
+          const idCopia = copia.id || assignedId(copia.school || '', copia.level, copia.module, copia.week, copia.course);
           await deleteDoc(doc(db, 'classes', idCopia)).catch(() => {});
         }
       }
@@ -895,7 +947,7 @@ export default function App() {
         // coinciden, se anuncia una cantidad de entregas y se borra otra. Y una
         // entrega sin módulo cuenta como del 1, así que borrar la clase 1 del
         // módulo 3 ya no se lleva puesta una entrega histórica del módulo 1.
-        if (!entregaEsDeLaClase(sub, { level, module, week })) return false;
+        if (!entregaEsDeLaClase(sub, { level, module, week, course })) return false;
 
         if (school) {
           const alumno = studentsByState.find(
@@ -907,7 +959,7 @@ export default function App() {
       });
 
       for (const sub of entregasDeLaClase) {
-        const subId = submissionIdExistente(sub.studentEmail, sub.classLevel, sub.classModule, sub.classWeek);
+        const subId = submissionIdExistente(sub.studentEmail, sub.classLevel, sub.classModule, sub.classWeek, sub.classCourse);
         await deleteDoc(doc(db, 'submissions', subId)).catch(() => {});
       }
     } catch (error) {
@@ -995,7 +1047,7 @@ export default function App() {
       const cl = d.data() as ClassItem;
       if (cl.school !== nombreViejo) continue;
 
-      const nuevoId = assignedId(nombreNuevo, cl.level, cl.module, cl.week);
+      const nuevoId = assignedId(nombreNuevo, cl.level, cl.module, cl.week, cl.course);
       await setDoc(doc(db, 'classes', nuevoId), { ...cl, school: nombreNuevo });
       if (d.id !== nuevoId) {
         await deleteDoc(doc(db, 'classes', d.id));
@@ -1026,7 +1078,14 @@ export default function App() {
   };
 
   // Aprobar un usuario con rol 'pausado' y asignarle un rol y curso formal
-  const handleApproveUser = async (email: string, targetRole: 'alumno' | 'directivo' | 'admin', level?: number, school?: string) => {
+  const handleApproveUser = async (
+    email: string,
+    targetRole: 'alumno' | 'directivo' | 'admin',
+    level?: number,
+    school?: string,
+    /** Cursos que hace el alumno, cada uno con su nivel. */
+    inscripciones?: Inscripcion[]
+  ) => {
     try {
       const cleanEmail = email.toLowerCase().trim();
       const userRef = doc(db, 'users', cleanEmail);
@@ -1045,11 +1104,15 @@ export default function App() {
         finalSchool = school || existingData.school || SIN_ASIGNAR;
       }
 
+      // `level` sigue siendo el nivel en Finanzas (lo usan las cuentas de
+      // antes de los cursos); la lista completa va en `inscripciones`.
+      const nivelFinanzas = inscripciones?.find((i) => i.course === FINANZAS)?.level;
       const updatedUser: User = {
         ...existingData,
         role: targetRole,
-        level: level !== undefined ? level : (existingData.level || 0),
-        school: finalSchool
+        level: nivelFinanzas ?? (level !== undefined ? level : (existingData.level || 0)),
+        school: finalSchool,
+        ...(targetRole === 'alumno' && inscripciones ? { inscripciones } : {}),
       };
 
       await setDoc(userRef, updatedUser);
@@ -1080,7 +1143,8 @@ export default function App() {
           progress: studentSnap.exists() ? (studentSnap.data() as Student).progress : 0,
           total: studentSnap.exists() ? (studentSnap.data() as Student).total : (availableClassesCount || 32),
           status: studentSnap.exists() ? (studentSnap.data() as Student).status : 'ok',
-          registered: true
+          registered: true,
+          ...(updatedUser.inscripciones ? { inscripciones: updatedUser.inscripciones } : {}),
         };
         await setDoc(studentDocRef, studentRecord);
         console.log(`Created/updated student record for approved user:`, studentRecord);
@@ -1091,6 +1155,107 @@ export default function App() {
       throw e;
     }
   };
+
+  /** Crear un curso nuevo. Devuelve su identificador. */
+  const handleCreateCourse = async (datos: { name: string; desc: string; accent: string }) => {
+    const id = idDeCurso(datos.name);
+    if (!id) throw new Error('El nombre del curso no puede quedar vacío.');
+    if (cursos.some((c) => c.id === id)) throw new Error('Ya existe un curso con ese nombre.');
+    const curso: Curso = {
+      id,
+      name: datos.name.trim(),
+      desc: datos.desc.trim(),
+      accent: datos.accent,
+      createdAt: new Date().toISOString(),
+    };
+    try {
+      await setDoc(doc(db, 'courses', id), curso);
+      // Se muestra ya, sin esperar a que la lista en vivo lo traiga.
+      setCursosCreados((actuales) => [...actuales.filter((c) => c.id !== id), curso]);
+      setReintentoCursos((n) => n + 1);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `courses/${id}`);
+      throw e;
+    }
+    return id;
+  };
+
+  /**
+   * Guardar los datos de un curso: nombre, descripción, color, y los nombres
+   * de sus niveles y módulos. Vale también para Finanzas: lo que se le cambie
+   * queda en un documento 'courses/finanzas' que se combina con sus valores
+   * de siempre. El identificador del curso no cambia nunca.
+   */
+  const handleUpdateCourse = async (curso: Curso) => {
+    try {
+      // Se guarda entero (sin merge): así un nombre de módulo borrado se borra
+      // de verdad. JSON quita los campos vacíos (undefined), que Firestore rechaza.
+      const datos = JSON.parse(JSON.stringify({ ...curso, updatedAt: new Date().toISOString() }));
+      await setDoc(doc(db, 'courses', curso.id), datos);
+      setCursosCreados((actuales) => [...actuales.filter((c) => c.id !== curso.id), curso]);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, `courses/${curso.id}`);
+      throw e;
+    }
+  };
+
+  /**
+   * Borrar un curso con todo lo suyo: sus clases (plantillas y copias
+   * publicadas), las entregas de los alumnos, y la inscripción de cada alumno
+   * en ese curso. Finanzas no se puede borrar.
+   *
+   * Va en lotes: si algo falla a mitad de camino, lo que no se llegó a borrar
+   * queda como estaba y se puede volver a intentar.
+   */
+  const handleDeleteCourse = async (id: string) => {
+    if (id === FINANZAS) throw new Error('Finanzas no se puede borrar.');
+
+    const operaciones: Array<(lote: ReturnType<typeof writeBatch>) => void> = [];
+    const borrar = (coleccion: string, docId: string) =>
+      operaciones.push((lote) => lote.delete(doc(db, coleccion, docId)));
+
+    try {
+      // Se busca en la base y no en lo cargado en pantalla, para no dejar nada suelto.
+      const [clasesSnap, entregasSnap, usuariosSnap, alumnosSnap] = await Promise.all([
+        getDocs(query(collection(db, 'classes'), where('course', '==', id))),
+        getDocs(query(collection(db, 'submissions'), where('classCourse', '==', id))),
+        getDocs(collection(db, 'users')),
+        getDocs(collection(db, 'students')),
+      ]);
+      clasesSnap.forEach((d) => borrar('classes', d.id));
+      entregasSnap.forEach((d) => borrar('submissions', d.id));
+      // Sacar el curso de cada alumno que lo cursaba (en 'users' y en 'students').
+      for (const [coleccion, snap] of [['users', usuariosSnap], ['students', alumnosSnap]] as const) {
+        snap.forEach((d) => {
+          const insc = (d.data() as { inscripciones?: Inscripcion[] }).inscripciones;
+          if (!insc?.some((i) => i.course === id)) return;
+          const restantes = insc.filter((i) => i.course !== id);
+          operaciones.push((lote) => lote.set(doc(db, coleccion, d.id), { inscripciones: restantes }, { merge: true }));
+        });
+      }
+    } catch (e) {
+      handleFirestoreError(e, OperationType.LIST, `courses/${id}`);
+      throw e;
+    }
+    // El curso en sí, al final: si algo falló antes, todavía se ve y se puede reintentar.
+    borrar('courses', id);
+
+    try {
+      for (let i = 0; i < operaciones.length; i += 400) {
+        const lote = writeBatch(db);
+        operaciones.slice(i, i + 400).forEach((op) => op(lote));
+        await lote.commit();
+      }
+      setCursosCreados((actuales) => actuales.filter((c) => c.id !== id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, `courses/${id}`);
+      throw e;
+    }
+  };
+
+  /** Lo que se pierde al borrar un curso, para mostrarlo antes de confirmar. */
+  const alcanceDeBorradoDeCurso = (id: string) =>
+    alcanceDeCurso(id, { classes, submissions, usuarios: allUsers });
 
   // Declinar / Eliminar un registro de usuario en 'users'
   const handleDeleteUser = async (email: string) => {
@@ -1111,7 +1276,7 @@ export default function App() {
   // Guardar corrección cualitativa y comentario técnico en Firestore (Docentes)
   const handleSaveSubmission = async (submission: ActivitySubmission) => {
     try {
-      const docId = submissionIdExistente(submission.studentEmail, submission.classLevel, submission.classModule, submission.classWeek);
+      const docId = submissionIdExistente(submission.studentEmail, submission.classLevel, submission.classModule, submission.classWeek, submission.classCourse);
       await setDoc(doc(db, 'submissions', docId), submission, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'submissions');
@@ -1193,6 +1358,7 @@ export default function App() {
               >
                 <StudentDashboard
                   user={currentUser}
+                  cursos={cursos}
                   classes={classes}
                   submissions={submissions}
                   onOpenClass={handleOpenClass}
@@ -1210,6 +1376,7 @@ export default function App() {
               >
                 <ClassView
                   user={currentUser}
+                  curso={cursos.find((c) => c.id === cursoDe(activeClassItem))}
                   classItem={activeClassItem}
                   submissions={submissions}
                   onBack={() => setCurrentView('dashboard')}
@@ -1278,7 +1445,8 @@ export default function App() {
                 transition={{ duration: 0.4 }}
               >
                 <StaffProgress
-                  students={studentsConProgreso}
+                  students={studentsByState}
+                  cursos={cursos}
                   submissions={submissions}
                   classes={classes}
                   role={currentUser.role as 'directivo'}
@@ -1301,6 +1469,11 @@ export default function App() {
                   students={studentsConProgreso}
                   submissions={submissions}
                   allUsers={allUsers}
+                  cursos={cursos}
+                  onCreateCourse={handleCreateCourse}
+                  onUpdateCourse={handleUpdateCourse}
+                  onDeleteCourse={handleDeleteCourse}
+                  alcanceDeBorradoDeCurso={alcanceDeBorradoDeCurso}
                   onSaveClass={handleSaveClass}
                   onDeleteClass={handleDeleteClass}
                   onAssignClass={handleAssignClass}

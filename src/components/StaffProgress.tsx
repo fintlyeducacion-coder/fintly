@@ -1,13 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'motion/react';
 import { 
   Users, Search, ArrowLeft, CheckCircle2, Award, 
   MessageSquare, ChevronRight, ClipboardList, AlertCircle } from 'lucide-react';
-import { Student, ActivitySubmission, ClassItem, User } from '../types';
-import { COURSES, ASSOCIATED_SCHOOLS, normalizarNota } from '../data';
+import { Student, ActivitySubmission, ClassItem, User, Curso } from '../types';
+import { FINANZAS, CURSO_FINANZAS, cursoDe, cursoDeEntrega, nivelEn, nivelesDe } from '../lib/cursos';
+import { calcularProgresos } from '../lib/recorrido';
+import { ASSOCIATED_SCHOOLS, normalizarNota } from '../data';
 
 interface StaffProgressProps {
+  /** Alumnos tal como están guardados; el avance se calcula acá, por curso. */
   students: Student[];
+  cursos?: Curso[];
   submissions: ActivitySubmission[];
   classes: ClassItem[];
   role: 'directivo';
@@ -32,9 +36,10 @@ function getAvatarGradient(name: string): string {
 }
 
 export default function StaffProgress({
-  students,
-  submissions,
-  classes,
+  students: alumnosGuardados,
+  cursos = [CURSO_FINANZAS],
+  submissions: todasLasEntregas,
+  classes: todasLasClases,
   role,
   user,
   onSaveSubmission
@@ -53,6 +58,28 @@ export default function StaffProgress({
   const [feedbackInput, setFeedbackInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null);
+
+  // Curso que se está mirando. Todo lo de abajo (niveles, alumnos, entregas)
+  // es de este curso; cada alumno aparece con su nivel en ese curso.
+  const [cursoElegido, setCursoElegido] = useState<string>(FINANZAS);
+  const infoCurso = cursos.find((c) => c.id === cursoElegido) ?? CURSO_FINANZAS;
+  const classes = useMemo(
+    () => todasLasClases.filter((cl) => cursoDe(cl) === cursoElegido),
+    [todasLasClases, cursoElegido]
+  );
+  const submissions = useMemo(
+    () => todasLasEntregas.filter((e) => cursoDeEntrega(e) === cursoElegido),
+    [todasLasEntregas, cursoElegido]
+  );
+  const students = useMemo(
+    () =>
+      calcularProgresos(alumnosGuardados, todasLasClases, todasLasEntregas, new Date(), cursoElegido)
+        .filter((s) => nivelEn(s, cursoElegido) !== undefined)
+        .map((s) => ({ ...s, level: nivelEn(s, cursoElegido) as number })),
+    [alumnosGuardados, todasLasClases, todasLasEntregas, cursoElegido]
+  );
+  // Nombre de cada nivel (el editado o el de siempre); sin nombre propio, el del curso.
+  const niveles = nivelesDe(infoCurso).map((n) => ({ ...n, name: n.name || infoCurso.name }));
 
   // Sincronizar si cambia el usuario o colegio asignado.
   //
@@ -179,6 +206,26 @@ export default function StaffProgress({
             </h1>
           </div>
 
+          {/* Selector de curso: sólo si hay más de uno */}
+          {cursos.length > 1 && (
+            <div className="flex bg-[#14132b]/40 light:bg-neutral-100/85 p-0.5 rounded-xl border border-white/5 light:border-neutral-200 text-[11px] font-bold gap-0.5 max-w-full overflow-x-auto no-scrollbar">
+              {cursos.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCursoElegido(c.id)}
+                  className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-all cursor-pointer ${
+                    c.id === cursoElegido
+                      ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white'
+                      : 'text-gray-400 hover:text-white light:text-neutral-600 light:hover:text-neutral-900'
+                  }`}
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          )}
+
           {!user.school && (
             <button
               onClick={() => setSelectedSchool(null)}
@@ -191,7 +238,7 @@ export default function StaffProgress({
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {COURSES.map((course) => {
+          {niveles.map((course) => {
             const levelStudents = schoolStudents.filter(s => s.level === course.id);
             const levelSubmissions = schoolSubmissions.filter(sub => sub.classLevel === course.id);
             const pendingCorrectionCount = levelSubmissions.filter(sub => !sub.grade).length;
@@ -245,7 +292,7 @@ export default function StaffProgress({
     );
   }
 
-  const courseDetail = COURSES[selectedLevel] || COURSES[0];
+  const courseDetail = niveles[selectedLevel] || niveles[0];
   const studentsInScope = students.filter(s => 
     s.school?.toLowerCase() === selectedSchool.toLowerCase() && s.level === selectedLevel
   );

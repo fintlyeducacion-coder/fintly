@@ -4,10 +4,13 @@ import {
   X, Save, BookOpen, Film, Layers, FileText, Calendar, Link,
   Eye, ArrowLeft, Video, Presentation, FilePenLine, Clock, CalendarDays, CheckCircle2
 } from 'lucide-react';
-import { ClassItem } from '../types';
+import { ClassItem, Curso } from '../types';
+import { FINANZAS, nivelesDe } from '../lib/cursos';
 import { sanitizeHtml } from '../sanitize';
 import { ASSOCIATED_SCHOOLS } from '../data';
-import { htmlATexto, textoAHtml } from '../lib/contenido';
+import { textoAHtml } from '../lib/contenido';
+import { limpiarHtml, repararHtml } from '../lib/pegado';
+import EditorContenido from './EditorContenido';
 import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../lib/embeds';
 import { aInputLocal } from '../lib/fechas';
 
@@ -18,7 +21,12 @@ interface ClassModalProps {
   initialClass: ClassItem | null;
   associatedSchools?: string[];
   onAssignClass?: (sourceClass: ClassItem, schools: string[], unlockAt: string, deadline: string) => void | Promise<void>;
+  /** Curso de la clase, para mostrar los nombres de sus niveles. Sin curso, Finanzas. */
+  curso?: Curso;
 }
+
+/** Los nombres de siempre de Finanzas en este selector. */
+const NIVELES_FINANZAS = ['Fundamentos', 'Hábitos financieros', 'Inversión básica', 'Estrategia avanzada'];
 
 // Presentaciones: sólo direcciones https (un src "javascript:" ejecutaría código).
 const getEmbedUrl = urlDeEmbed;
@@ -31,7 +39,7 @@ function camposIniciales(cl: ClassItem) {
   const rawVideoId = cl.videoId || '';
   return {
     title: cl.title || '',
-    text: cl.text ? htmlATexto(cl.text) : '',
+    text: cl.text ? repararHtml(cl.text) : '',
     videoId:
       rawVideoId && !rawVideoId.includes('youtube.com') && !rawVideoId.includes('youtu.be')
         ? `https://www.youtube.com/watch?v=${rawVideoId}`
@@ -52,8 +60,16 @@ export default function ClassModal({
   onSave,
   initialClass,
   associatedSchools = [],
-  onAssignClass
+  onAssignClass,
+  curso
 }: ClassModalProps) {
+  // "Nivel 0 — Fundamentos" en Finanzas; en otro curso, el nombre que le hayan puesto.
+  const niveles = nivelesDe(curso);
+  const textoNivel = (n: number) => {
+    const propio = curso?.niveles?.[n]?.name?.trim();
+    if (!curso || curso.id === FINANZAS) return `Nivel ${n} — ${propio || NIVELES_FINANZAS[n]}`;
+    return niveles[n]?.name ? `Nivel ${n} — ${niveles[n].name}` : `Nivel ${n}`;
+  };
   const [level, setLevel] = useState(0);
   const [week, setWeek] = useState(1);
   const [title, setTitle] = useState('');
@@ -161,7 +177,9 @@ export default function ClassModal({
         setTitle(parsed.title ?? '');
         setUnlockAt(parsed.unlockAt ?? '');
         setDeadline(parsed.deadline ?? '');
-        setText(parsed.text ?? '');
+        // Los borradores anteriores a este editor guardaban texto con ### y *.
+        const textoGuardado: string = parsed.text ?? '';
+        setText(textoGuardado && !textoGuardado.trim().startsWith('<') ? textoAHtml(textoGuardado) : textoGuardado);
         setVideoId(parsed.videoId ?? '');
         setSlidesUrl(parsed.slidesUrl ?? '');
         setActTitle(parsed.actTitle ?? '');
@@ -253,15 +271,16 @@ export default function ClassModal({
       // El ID con que estaba guardada: si es de la versión vieja (sin módulo), se muda al actual.
       id: initialClass?.id,
       level,
-      // Conservamos el módulo y la marca de syllabus del original:
+      // Conservamos el módulo, el curso y la marca de syllabus del original:
       // sin esto la clase se guarda huérfana y no aparece en su módulo
       module: initialClass?.module,
+      course: initialClass?.course,
       isSyllabus: initialClass?.isSyllabus,
       week: Number(week),
       title: title.trim(),
       unlockAt,
       deadline,
-      text: textoAHtml(text),
+      text: limpiarHtml(text),
       videoId: extractedId,
       slidesUrl: slidesUrl.trim(),
       actTitle: actTitle.trim(),
@@ -662,10 +681,11 @@ ${error?.message || 'Error desconocido'}`);
                 onChange={(e) => setLevel(Number(e.target.value))}
                 className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 text-sm focus:outline-none focus:border-violet-500/70 focus:ring-1 focus:ring-violet-500/20 transition-colors"
               >
-                <option value="0" className="bg-[#12122a] text-white light:bg-white light:text-neutral-800">Nivel 0 — Fundamentos</option>
-                <option value="1" className="bg-[#12122a] text-white light:bg-white light:text-neutral-800">Nivel 1 — Hábitos financieros</option>
-                <option value="2" className="bg-[#12122a] text-white light:bg-white light:text-neutral-800">Nivel 2 — Inversión básica</option>
-                <option value="3" className="bg-[#12122a] text-white light:bg-white light:text-neutral-800">Nivel 3 — Estrategia avanzada</option>
+                {[0, 1, 2, 3].map((n) => (
+                  <option key={n} value={n} className="bg-[#12122a] text-white light:bg-white light:text-neutral-800">
+                    {textoNivel(n)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -726,81 +746,18 @@ ${error?.message || 'Error desconocido'}`);
 
           {/* Class Text contents body */}
           <div className="space-y-1.5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1">
               <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
                 Texto del contenido
               </label>
-              
-              {/* Toolbar de formato rápido */}
-              <div className="flex flex-wrap items-center gap-1 pb-1 select-none">
-                <button
-                  type="button"
-                  title="Insertar subtítulo h3"
-                  onClick={() => {
-                    setText(prev => prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + '### Siguiente Subtítulo\n');
-                  }}
-                  className="px-2 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded-xl text-[10px] font-bold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
-                >
-                  Subtítulo (###)
-                </button>
-                <button
-                  type="button"
-                  title="Insertar viñeta de lista"
-                  onClick={() => {
-                    setText(prev => prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + '* Elemento de la lista\n');
-                  }}
-                  className="px-2 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded-xl text-[10px] font-bold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
-                >
-                  Lista (*)
-                </button>
-                <button
-                  type="button"
-                  title="Insertar texto en negrita"
-                  onClick={() => {
-                    setText(prev => prev + '**negrita**');
-                  }}
-                  className="px-2.5 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded-xl text-[10px] font-extrabold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
-                >
-                  B
-                </button>
-                <button
-                  type="button"
-                  title="Insertar texto en cursiva"
-                  onClick={() => {
-                    setText(prev => prev + '*itálica*');
-                  }}
-                  className="px-2.5 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded-xl text-[10px] font-semibold italic transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
-                >
-                  I
-                </button>
-                <button
-                  type="button"
-                  title="Insertar separador horizontal"
-                  onClick={() => {
-                    setText(prev => prev + (prev.endsWith('\n') || prev === '' ? '' : '\n') + '---\n');
-                  }}
-                  className="px-2 py-1 bg-white/5 hover:bg-white/10 light:bg-neutral-100 light:hover:bg-neutral-200 text-gray-300 light:text-neutral-700 hover:text-white rounded-xl text-[10px] font-bold transition-colors border border-white/5 light:border-neutral-200 cursor-pointer"
-                >
-                  — Separador
-                </button>
-                <button
-                  type="button"
-                  title="Cargar plantilla de ejemplo estructurada"
-                  onClick={() => {
-                    setText('### 1. Conceptos Claves de Ahorro\n\n¿Por qué ahorramos? El ahorro no es solo guardar dinero, sino postergar un consumo presente para asegurar un beneficio futuro.\n\n### 2. Método de la Regla 50/30/20\n\nEste es un sistema clásico y efectivo para ordenar tus ingresos:\n\n* **50% Necesidades**: Alquiler, servicios, comida indispensable.\n* **30% Deseos**: Salidas, entretenimiento, indumentaria por gusto.\n* **20% Ahorro e Inversión**: Fondo de emergencia, aportes a cuentas de acciones.\n\n---\n\n### 3. Conclusión Práctica\n\nMantener la consistencia supera ampliamente al volumen inicial. ¡Hazlo un hábito todos los meses!');
-                  }}
-                  className="px-2 py-1 bg-violet-600/15 hover:bg-violet-600/35 text-violet-300 light:bg-violet-50 light:text-violet-700 rounded-xl text-[10px] font-bold transition-colors border border-violet-500/20 cursor-pointer"
-                >
-                  Ejemplo
-                </button>
-              </div>
+              <span className="text-[10px] text-gray-500 light:text-neutral-500">
+                Podés pegar directo desde Google Docs o Word.
+              </span>
             </div>
-            
-            <textarea
+            <EditorContenido
               value={text}
-              onChange={(e) => setText(e.target.value)}
-              placeholder="Usa doble salto de línea para nuevos párrafos.&#10;Puedes usar formados como:&#10;### Mi Título de sección&#10;* Un elemento de lista."
-              className="w-full min-h-[140px] bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl p-4 text-white light:text-neutral-800 placeholder-gray-500 light:placeholder-neutral-400 text-sm focus:outline-none focus:border-violet-500 font-sans transition-colors"
+              onChange={setText}
+              placeholder={'Escribí o pegá acá el contenido de la clase.\nSe conservan títulos, negritas, listas y enlaces.'}
             />
           </div>
 
@@ -1014,7 +971,7 @@ ${error?.message || 'Error desconocido'}`);
                     <div 
                       className="class-body-html"
                       dangerouslySetInnerHTML={{ 
-                        __html: sanitizeHtml(textoAHtml(text) || '<p>No hay texto redactado todavía.</p>')
+                        __html: sanitizeHtml(limpiarHtml(text) || '<p>No hay texto redactado todavía.</p>')
                       }}
                     />
                   </motion.div>

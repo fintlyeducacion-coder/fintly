@@ -13,6 +13,9 @@ export const CLASES_POR_MODULO = 4;
 /** Módulos por nivel. Cuatro módulos de un mes = un nivel por cuatrimestre. */
 export const MODULOS_POR_NIVEL = 4;
 
+/** El curso de siempre. Todo lo que no dice de qué curso es, es de este. */
+export const FINANZAS = 'finanzas';
+
 /**
  * ¿Se puede entregar una actividad después de su fecha límite?
  *

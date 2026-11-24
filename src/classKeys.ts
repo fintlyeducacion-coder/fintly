@@ -1,4 +1,4 @@
-import { CLASES_POR_MODULO } from './data';
+import { CLASES_POR_MODULO, FINANZAS } from './data';
 
 /**
  * classKeys.ts
@@ -23,17 +23,25 @@ const slugEmail = (email: string) => email.toLowerCase().replace(/[^a-zA-Z0-9_.-
 /** Clases anteriores a este cambio no tienen módulo: las tratamos como del módulo 1. */
 const mod = (module?: number) => module ?? 1;
 
+/**
+ * Tramo del curso en el ID. Finanzas no lleva: así sus IDs siguen siendo los
+ * mismos de siempre y no hubo que migrar nada. Los demás cursos lo llevan,
+ * para que su "clase 1 del módulo 1" nunca pise la de Finanzas.
+ */
+const tramoCurso = (course?: string) =>
+  course && course !== FINANZAS ? `_c${course.replace(/[^a-zA-Z0-9-]/g, '_')}` : '';
+
 /** Plantilla maestra en la Biblioteca (sin colegio). */
-export const syllabusId = (level: number, module: number | undefined, week: number) =>
-  `syllabus_l${level}_m${mod(module)}_w${week}`;
+export const syllabusId = (level: number, module: number | undefined, week: number, course?: string) =>
+  `syllabus${tramoCurso(course)}_l${level}_m${mod(module)}_w${week}`;
 
 /** Copia publicada a un colegio concreto. */
-export const assignedId = (school: string, level: number, module: number | undefined, week: number) =>
-  `assigned_s${slugColegio(school)}_l${level}_m${mod(module)}_w${week}`;
+export const assignedId = (school: string, level: number, module: number | undefined, week: number, course?: string) =>
+  `assigned_s${slugColegio(school)}${tramoCurso(course)}_l${level}_m${mod(module)}_w${week}`;
 
 /** Entrega de un alumno para una clase. */
-export const submissionId = (email: string, level: number, module: number | undefined, week: number) =>
-  `${slugEmail(email)}_l${level}_m${mod(module)}_w${week}`;
+export const submissionId = (email: string, level: number, module: number | undefined, week: number, course?: string) =>
+  `${slugEmail(email)}${tramoCurso(course)}_l${level}_m${mod(module)}_w${week}`;
 
 /**
  * ID de una entrega YA GUARDADA. Respeta el formato con el que se creó:
@@ -45,11 +53,12 @@ export const submissionIdExistente = (
   email: string,
   level: number,
   module: number | undefined,
-  week: number
+  week: number,
+  course?: string
 ) =>
   module === undefined
     ? `${slugEmail(email)}_l${level}_w${week}`
-    : `${slugEmail(email)}_l${level}_m${module}_w${week}`;
+    : `${slugEmail(email)}${tramoCurso(course)}_l${level}_m${module}_w${week}`;
 
 /**
  * Posición absoluta de una clase dentro de su nivel: el módulo 1 ocupa los primeros
@@ -86,9 +95,10 @@ export const idsHistoricos = (school: string | undefined, level: number, week: n
  * borrar una clase se arrastraban entregas de otro módulo.
  */
 export const entregaEsDeLaClase = (
-  entrega: { classLevel: number; classModule?: number; classWeek: number },
-  clase: { level: number; module?: number; week: number }
+  entrega: { classLevel: number; classModule?: number; classWeek: number; classCourse?: string },
+  clase: { level: number; module?: number; week: number; course?: string }
 ) =>
+  (entrega.classCourse || FINANZAS) === (clase.course || FINANZAS) &&
   entrega.classLevel === clase.level &&
   entrega.classWeek === clase.week &&
   (entrega.classModule ?? 1) === (clase.module ?? 1);

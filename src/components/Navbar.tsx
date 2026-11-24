@@ -10,7 +10,7 @@ interface NavbarProps {
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
   classes?: ClassItem[];
-  onOpenClass?: (level: number, module: number | undefined, week: number) => void;
+  onOpenClass?: (level: number, module: number | undefined, week: number, course?: string) => void;
 }
 
 const ROLE_CONFIG: Record<string, { label: string; dot: string; avatar: string; badge: string }> = {
