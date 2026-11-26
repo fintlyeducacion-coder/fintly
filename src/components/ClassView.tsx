@@ -304,7 +304,7 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
                   <h3 className="font-display text-lg sm:text-xl font-bold text-white light:text-slate-900 mt-1 leading-tight">
                     {classItem.actTitle || 'Actividad práctica'}
                   </h3>
-                  <p className="text-[13px] text-slate-400 light:text-slate-500 mt-2 leading-relaxed">
+                  <p className="text-[13px] text-slate-400 light:text-slate-500 mt-2 leading-relaxed whitespace-pre-line">
                     {classItem.actDesc || 'Escribí tu respuesta para la consigna de esta clase.'}
                   </p>
                 </div>

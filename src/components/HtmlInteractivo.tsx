@@ -116,6 +116,8 @@ export default function HtmlInteractivo({ contenidoId, html, titulo, altoMinimo 
       srcDoc={srcDoc}
       // Corre su código, pero no puede tocar la sesión ni la base: sin allow-same-origin.
       sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms"
+      allow="fullscreen"
+      allowFullScreen
       className="w-full border-0 rounded-2xl block"
       style={{ height: alto, scrollMarginTop: 80 }}
 

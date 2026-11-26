@@ -65,6 +65,9 @@ export function problemaDelHtml(html: string): string | null {
  */
 const PUENTE = `<script>(function(){
 var M=${JSON.stringify(MARCA_MENSAJE)},ult=0;
+/* La caja crece al alto del contenido: adentro no hay nada que desplazar. Sin esto, una barra
+   que aparece achica el ancho, cambia el alto medido y la barra no se va nunca. */
+var est=document.createElement('style');est.textContent='html,body{overflow-y:hidden!important}';(document.head||document.documentElement).appendChild(est);
 function alto(){var b=document.body;if(!b)return;var cs=getComputedStyle(b),r=b.getBoundingClientRect(),dcs=getComputedStyle(document.documentElement);
 /* El alto del contenido, no el de la página: la página nunca mide menos que el iframe, y así la caja podría crecer pero nunca achicarse. */
 var h=Math.ceil(r.height+parseFloat(cs.marginTop)+parseFloat(cs.marginBottom)+parseFloat(dcs.paddingTop)+parseFloat(dcs.paddingBottom));if(Math.abs(h-ult)>1){ult=h;parent.postMessage({m:M,tipo:'alto',h:h},'*');}}

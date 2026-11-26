@@ -271,9 +271,8 @@ export default function ClassModal({
     }
 
     const trimmedVideo = videoId.trim();
-    if (!trimmedVideo) {
-      return 'Por favor ingresa el enlace (link) completo de YouTube.';
-    }
+    // El video puede quedar para después: la clase se ve con "Video en producción".
+    if (!trimmedVideo) return null;
 
     const isYoutubeUrl = trimmedVideo.includes('youtube.com') || trimmedVideo.includes('youtu.be');
     if (!isYoutubeUrl) {
@@ -804,18 +803,17 @@ ${error?.message || 'Error desconocido'}`);
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
-                Link completo de YouTube (Obligatorio)
+                Link completo de YouTube
               </label>
               <input
                 type="text"
-                required
                 value={videoId}
                 onChange={(e) => setVideoId(e.target.value)}
                 placeholder="ej: https://www.youtube.com/watch?v=dQw4w9WgXcQ"
                 className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2.5 text-white light:text-neutral-800 placeholder-gray-500 light:placeholder-neutral-400 text-sm focus:outline-none focus:border-violet-500"
               />
               <span className="text-[9px] text-[#8e8ea4] light:text-[#717188] italic block">
-                Pega el link completo de YouTube. Es obligatorio ingresar un enlace completo para guardar.
+                Pegá el link completo de YouTube. Si todavía no está, dejalo vacío y agregalo después.
               </span>
             </div>
 
