@@ -108,6 +108,18 @@ service cloud.firestore {
       allow write: if esAdmin();
     }
 
+    // Lecturas y presentaciones HTML de las clases. Las lee cualquier cuenta
+    // aprobada (no tienen datos de nadie: es el material del curso) y sólo el
+    // admin las sube. Tope de tamaño para no pasar el límite de Firestore.
+    match /contenidos/{contenidoId} {
+      allow read: if esAdmin() || esAprobado();
+      allow create: if esAdmin() &&
+                    request.resource.data.html is string &&
+                    request.resource.data.html.size() <= 900000;
+      allow update: if false;
+      allow delete: if esAdmin();
+    }
+
     // ── 2. Clases ────────────────────────────────────────────────
     //
     // Antes: "allow read: if isSignedIn()". Cualquiera con una cuenta de Google

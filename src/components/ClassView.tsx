@@ -7,6 +7,7 @@ import {
 import { ClassItem, User, ActivitySubmission, Curso } from '../types';
 import { FINANZAS, acentoDeNivel, cursoDe, nivelesDe } from '../lib/cursos';
 import { sanitizeHtml } from '../sanitize';
+import HtmlInteractivo from './HtmlInteractivo';
 import { entregaEsDeLaClase } from '../classKeys';
 import { normalizarNota, PERMITIR_ENTREGA_TARDIA } from '../data';
 import { urlDeEmbed, urlDeYoutube } from '../lib/embeds';
@@ -226,7 +227,17 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
       <div className="min-h-[300px]">
         <AnimatePresence mode="wait">
 
-          {tab === 'content' && (
+          {tab === 'content' && (classItem.lecturaId ? (
+            <motion.div
+              key="content-html"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+            >
+              <HtmlInteractivo contenidoId={classItem.lecturaId} titulo="Lectura de la clase" />
+            </motion.div>
+          ) : (
             <motion.div
               key="content"
               initial={{ opacity: 0, y: 8 }}
@@ -236,7 +247,7 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
               className="class-body-html"
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(classItem.text) }}
             />
-          )}
+          ))}
 
           {tab === 'video' && (
             <motion.div key="video" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}>
@@ -257,7 +268,9 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
 
           {tab === 'slides' && (
             <motion.div key="slides" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}>
-              {getEmbedUrl(classItem.slidesUrl) ? (
+              {classItem.presentacionId ? (
+                <HtmlInteractivo contenidoId={classItem.presentacionId} titulo="Presentación de la clase" />
+              ) : getEmbedUrl(classItem.slidesUrl) ? (
                 <div className="rounded-2xl border border-white/[0.07] light:border-slate-200 overflow-hidden shadow-xl">
                   <iframe
                     title="Presentación de la clase"

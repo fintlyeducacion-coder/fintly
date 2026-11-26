@@ -11,6 +11,8 @@ import { ASSOCIATED_SCHOOLS } from '../data';
 import { textoAHtml } from '../lib/contenido';
 import { limpiarHtml, repararHtml } from '../lib/pegado';
 import EditorContenido from './EditorContenido';
+import CampoHtml from './CampoHtml';
+import HtmlInteractivo from './HtmlInteractivo';
 import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../lib/embeds';
 import { aInputLocal } from '../lib/fechas';
 
@@ -45,6 +47,8 @@ function camposIniciales(cl: ClassItem) {
         ? `https://www.youtube.com/watch?v=${rawVideoId}`
         : rawVideoId,
     slidesUrl: cl.slidesUrl || '',
+    lecturaId: cl.lecturaId || '',
+    presentacionId: cl.presentacionId || '',
     actTitle: cl.actTitle || '',
     actDesc: cl.actDesc || '',
   };
@@ -52,7 +56,7 @@ function camposIniciales(cl: ClassItem) {
 
 type Campos = Partial<ReturnType<typeof camposIniciales>>;
 const firmaDe = (c: Campos) =>
-  JSON.stringify([c.title ?? '', c.text ?? '', c.videoId ?? '', c.slidesUrl ?? '', c.actTitle ?? '', c.actDesc ?? '']);
+  JSON.stringify([c.title ?? '', c.text ?? '', c.videoId ?? '', c.slidesUrl ?? '', c.lecturaId ?? '', c.presentacionId ?? '', c.actTitle ?? '', c.actDesc ?? '']);
 
 export default function ClassModal({
   isOpen,
@@ -78,6 +82,11 @@ export default function ClassModal({
   const [text, setText] = useState('');
   const [videoId, setVideoId] = useState('');
   const [slidesUrl, setSlidesUrl] = useState('');
+  // Lectura y presentación en HTML: el id en la base, y nombre y HTML si se subieron recién (para la vista previa).
+  const [lecturaId, setLecturaId] = useState('');
+  const [presentacionId, setPresentacionId] = useState('');
+  const [lecturaInfo, setLecturaInfo] = useState<{ nombre?: string; html?: string }>({});
+  const [presentacionInfo, setPresentacionInfo] = useState<{ nombre?: string; html?: string }>({});
   const [actTitle, setActTitle] = useState('');
   const [actDesc, setActDesc] = useState('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -119,7 +128,7 @@ export default function ClassModal({
     }
     try {
       const parsed = JSON.parse(saved);
-      const conContenido = parsed && (parsed.title || parsed.text || parsed.actTitle || parsed.videoId);
+      const conContenido = parsed && (parsed.title || parsed.text || parsed.actTitle || parsed.videoId || parsed.lecturaId || parsed.presentacionId);
       if (conContenido && firmaDe(parsed) !== firmaInicial) {
         setHasDraft(true);
         if (parsed.savedAt) {
@@ -144,8 +153,8 @@ export default function ClassModal({
     if (!isOpen) return;
 
     const delayDebounce = setTimeout(() => {
-      const actual = { title, text, videoId, slidesUrl, actTitle, actDesc };
-      const anyContent = title.trim() || text.trim() || videoId.trim() || slidesUrl.trim() || actTitle.trim() || actDesc.trim();
+      const actual = { title, text, videoId, slidesUrl, lecturaId, presentacionId, actTitle, actDesc };
+      const anyContent = title.trim() || text.trim() || videoId.trim() || slidesUrl.trim() || lecturaId || presentacionId || actTitle.trim() || actDesc.trim();
       if (anyContent && firmaDe(actual) !== firmaInicial) {
         const draft = {
           level,
@@ -156,6 +165,8 @@ export default function ClassModal({
           text,
           videoId,
           slidesUrl,
+          lecturaId,
+          presentacionId,
           actTitle,
           actDesc,
           savedAt: new Date().toISOString()
@@ -165,7 +176,7 @@ export default function ClassModal({
     }, 1500);
 
     return () => clearTimeout(delayDebounce);
-  }, [isOpen, draftKey, firmaInicial, level, week, title, unlockAt, deadline, text, videoId, slidesUrl, actTitle, actDesc]);
+  }, [isOpen, draftKey, firmaInicial, level, week, title, unlockAt, deadline, text, videoId, slidesUrl, lecturaId, presentacionId, actTitle, actDesc]);
 
   // Handler to Restore Draft
   const handleRestoreDraft = () => {
@@ -182,6 +193,10 @@ export default function ClassModal({
         setText(textoGuardado && !textoGuardado.trim().startsWith('<') ? textoAHtml(textoGuardado) : textoGuardado);
         setVideoId(parsed.videoId ?? '');
         setSlidesUrl(parsed.slidesUrl ?? '');
+        setLecturaId(parsed.lecturaId ?? '');
+        setPresentacionId(parsed.presentacionId ?? '');
+        setLecturaInfo({});
+        setPresentacionInfo({});
         setActTitle(parsed.actTitle ?? '');
         setActDesc(parsed.actDesc ?? '');
         setHasDraft(false);
@@ -221,6 +236,10 @@ export default function ClassModal({
       setText(c.text);
       setVideoId(c.videoId);
       setSlidesUrl(c.slidesUrl);
+      setLecturaId(c.lecturaId);
+      setPresentacionId(c.presentacionId);
+      setLecturaInfo({});
+      setPresentacionInfo({});
       setActTitle(c.actTitle);
       setActDesc(c.actDesc);
     } else {
@@ -235,6 +254,10 @@ export default function ClassModal({
         setText('');
         setVideoId('');
         setSlidesUrl('');
+        setLecturaId('');
+        setPresentacionId('');
+        setLecturaInfo({});
+        setPresentacionInfo({});
         setActTitle('');
         setActDesc('');
       }
@@ -283,6 +306,9 @@ export default function ClassModal({
       text: limpiarHtml(text),
       videoId: extractedId,
       slidesUrl: slidesUrl.trim(),
+      // Vacío se guarda como '' (Firestore no acepta undefined) y en la vista cuenta como "no hay".
+      lecturaId,
+      presentacionId,
       actTitle: actTitle.trim(),
       actDesc: actDesc.trim(),
     };
@@ -744,11 +770,24 @@ ${error?.message || 'Error desconocido'}`);
             <div className="flex-1 h-px bg-violet-900/20 light:bg-violet-200/50" />
           </div>
 
+          {/* Lectura interactiva (HTML) */}
+          <CampoHtml
+            etiqueta="Lectura interactiva (HTML)"
+            ayuda="El .html de la clase hecho con Claude. Si lo subís, los alumnos ven esto en lugar del texto de abajo."
+            tipo="lectura"
+            valor={lecturaId}
+            nombre={lecturaInfo.nombre}
+            onCambio={(sub) => {
+              setLecturaId(sub?.id ?? '');
+              setLecturaInfo(sub ? { nombre: sub.nombre, html: sub.html } : {});
+            }}
+          />
+
           {/* Class Text contents body */}
           <div className="space-y-1.5">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-1">
               <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
-                Texto del contenido
+                {lecturaId ? 'Texto del contenido (no se muestra: hay lectura interactiva)' : 'Texto del contenido'}
               </label>
               <span className="text-[10px] text-gray-500 light:text-neutral-500">
                 Podés pegar directo desde Google Docs o Word.
@@ -780,9 +819,22 @@ ${error?.message || 'Error desconocido'}`);
               </span>
             </div>
 
-            <div className="space-y-1.5">
+            <CampoHtml
+              etiqueta="Presentación (HTML)"
+              ayuda="El .html de la presentación hecha con Claude."
+              tipo="presentacion"
+              valor={presentacionId}
+              nombre={presentacionInfo.nombre}
+              onCambio={(sub) => {
+                setPresentacionId(sub?.id ?? '');
+                setPresentacionInfo(sub ? { nombre: sub.nombre, html: sub.html } : {});
+              }}
+            />
+
+            {slidesUrl.trim() && (
+            <div className="space-y-1.5 sm:col-span-2">
               <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
-                Presentación o Slides (Gamma, Google Slides, Canva, Enlace o Código Iframe)
+                Presentación anterior por link (Gamma, Slides…){presentacionId ? ' · no se muestra: hay presentación HTML' : ''}
               </label>
               <textarea
                 value={slidesUrl}
@@ -792,9 +844,10 @@ ${error?.message || 'Error desconocido'}`);
                 className="w-full bg-white/5 border border-white/10 light:bg-white light:border-neutral-300 rounded-xl px-4 py-2 text-white light:text-neutral-800 placeholder-gray-500 light:placeholder-neutral-400 text-xs focus:outline-none focus:border-violet-500 resize-none font-mono"
               />
               <span className="text-[9px] text-[#8e8ea4] light:text-[#717188] italic block">
-                Pega el código iframe completo de Gamma/Canva o el link de Google Slides. Se extraerá y auto-saneará automáticamente al guardar.
+                Gamma ya no se usa. Si borrás este link, el campo desaparece.
               </span>
             </div>
+            )}
           </div>
 
           {/* Activity definition Area details */}
@@ -968,12 +1021,21 @@ ${error?.message || 'Error desconocido'}`);
                     animate={{ opacity: 1, y: 0 }}
                     className="prose prose-invert light:prose-neutral max-w-none text-gray-300 light:text-neutral-800 leading-relaxed space-y-4"
                   >
+                    {lecturaId ? (
+                      <HtmlInteractivo
+                        key={lecturaId}
+                        contenidoId={lecturaInfo.html ? undefined : lecturaId}
+                        html={lecturaInfo.html}
+                        titulo="Lectura de la clase"
+                      />
+                    ) : (
                     <div 
                       className="class-body-html"
                       dangerouslySetInnerHTML={{ 
                         __html: sanitizeHtml(limpiarHtml(text) || '<p>No hay texto redactado todavía.</p>')
                       }}
                     />
+                    )}
                   </motion.div>
                 )}
 
@@ -1014,7 +1076,14 @@ ${error?.message || 'Error desconocido'}`);
                     animate={{ opacity: 1 }}
                     className="w-full"
                   >
-                    {slidesUrl.trim() ? (
+                    {presentacionId ? (
+                      <HtmlInteractivo
+                        key={presentacionId}
+                        contenidoId={presentacionInfo.html ? undefined : presentacionId}
+                        html={presentacionInfo.html}
+                        titulo="Presentación de la clase"
+                      />
+                    ) : slidesUrl.trim() ? (
                       <div className="rounded-2xl border border-white/5 light:border-neutral-300 overflow-hidden bg-[#070714] light:bg-[#fbfbfb] shadow-xl relative">
                         <iframe
                           title="Presentación de la clase"

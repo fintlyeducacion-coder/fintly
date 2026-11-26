@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Notas internas (el repo es público)
+TAREAS.md

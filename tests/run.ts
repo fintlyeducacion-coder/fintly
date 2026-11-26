@@ -22,6 +22,7 @@ import { contarPalabras, htmlATexto, textoAHtml, tieneTexto } from '../src/lib/c
 import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../src/lib/embeds';
 import { aInputLocal, todaviaNo, urgencia, yaPaso } from '../src/lib/fechas';
 import { alcanceDeCurso, etiquetaNivel, idDeCurso, inscripcionesDe, listaDeCursos, nivelEn, nombreModulo } from '../src/lib/cursos';
+import { extraerHtmlDeArtifact, prepararParaMostrar, problemaDelHtml, LIMITE_HTML_BYTES } from '../src/lib/htmlClase';
 import { assignedId, entregaEsDeLaClase, submissionId, submissionIdExistente, syllabusId } from '../src/classKeys';
 
 let pasaron = 0;
@@ -443,6 +444,38 @@ prueba('los nombres editados de niveles y módulos se usan, y vacíos vuelven a 
   assert.equal(lista[0].id, 'finanzas');
   assert.equal(lista[0].name, 'Finanzas');
   assert.equal(lista.length, 2);
+});
+
+prueba('HTML de claude.ai: se saca el motor de claude.ai y queda sólo lo del autor', () => {
+  const motor = '<!doctype html><html><head><!-- frame-runtime --><script>window.__FRAME_PREAMBLE={}</script><script>claude()</script><meta charset=utf8><style>body{margin:0}</style></head><body>';
+  const autor = '<!doctype html>\n<html lang="es"><head><meta charset="utf-8"><title>Clase</title></head>\n<body><div id=app></div><script>render()</script>\n</body></html>';
+  const limpio = extraerHtmlDeArtifact(motor + autor + '\n\n</body></html>');
+  assert.ok(!limpio.includes('frame-runtime'));
+  assert.ok(!limpio.includes('claude()'));
+  assert.ok(limpio.startsWith('<!doctype html>'));
+  assert.ok(limpio.includes('render()'));
+  assert.equal((limpio.match(/<\/body>/g) || []).length, 1);
+  // Un HTML común no se toca.
+  assert.equal(extraerHtmlDeArtifact('  <p>hola</p> '), '<p>hola</p>');
+});
+
+prueba('HTML de clase: se rechaza vacío, no-HTML o demasiado pesado', () => {
+  assert.ok(problemaDelHtml('   '));
+  assert.ok(problemaDelHtml('solo texto plano'));
+  assert.equal(problemaDelHtml('<html><body><p>ok</p></body></html>'), null);
+  assert.ok(problemaDelHtml('<p>' + 'x'.repeat(LIMITE_HTML_BYTES) + '</p>'));
+});
+
+prueba('HTML de clase: se le pone el tema del campus y el puente una sola vez', () => {
+  const html = '<!doctype html><html lang="es" data-theme="light"><head><title>x</title></head><body><p>a</p><script>var s="</body>"</script></body></html>';
+  const listo = prepararParaMostrar(html, 'dark');
+  assert.ok(listo.includes('<html lang="es" data-theme="dark">'));
+  assert.ok(listo.includes('<meta name="color-scheme" content="dark">'));
+  assert.equal((listo.match(/fintly-html/g) || []).length, 1);
+  // El puente queda antes del último </body>, no adentro del script.
+  assert.ok(listo.indexOf('fintly-html') > listo.indexOf('var s='));
+  // Sin <html> ni <head>, igual funciona.
+  assert.ok(prepararParaMostrar('<p>hola</p>', 'light').includes('fintly-html'));
 });
 
 // ── Resultado ───────────────────────────────────────────────────

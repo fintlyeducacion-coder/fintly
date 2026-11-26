@@ -40,7 +40,12 @@ export interface ClassItem {
   deadline?: string;
   text: string;
   videoId?: string;
+  /** Presentación vieja por link (Gamma, Slides). Las nuevas van en `presentacionId`. */
   slidesUrl?: string;
+  /** Lectura interactiva (HTML) guardada en 'contenidos'. Si está, reemplaza a `text`. */
+  lecturaId?: string;
+  /** Presentación (HTML) guardada en 'contenidos'. */
+  presentacionId?: string;
   actTitle?: string;
   actDesc?: string;
   isSyllabus?: boolean;
