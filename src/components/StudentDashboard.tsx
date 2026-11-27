@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Lock, CheckCircle, Clock, ChevronRight, Zap, ArrowRight,
   Code2, Terminal, Bot, LineChart, Briefcase, Sparkles, X, AlertTriangle,
-  AlarmClock, CalendarClock, Play,
+  AlarmClock, CalendarClock, Play, CalendarDays,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -19,7 +19,7 @@ import { FINANZAS, CURSO_FINANZAS, cursoDe, inscripcionesDe, nivelesDe } from '.
 import { UPCOMING_COURSES, normalizarNota } from '../data';
 import { construirRecorrido, sePuedeAbrir, Paso } from '../lib/recorrido';
 import { avisoPrincipal, cuantoFalta, tonoDePaso, Aviso, Tono } from '../lib/avisos';
-import { fechaCorta } from '../lib/fechas';
+import { fechaCorta, soloHora } from '../lib/fechas';
 
 /** Los avisos que merecen un pop-up al entrar. Lo demás va sólo en la línea del panel. */
 const CON_POPUP: Aviso['tono'][] = ['vencida', 'hoy', 'manana', 'disponible'];
@@ -124,6 +124,128 @@ function AvisoLinea({ aviso, onAbrir }: { aviso: Aviso; onAbrir: (cl: ClassItem)
     <button type="button" onClick={() => onAbrir(aviso.clase!)} className={`${clases} cursor-pointer`}>{contenido}</button>
   ) : (
     <div className={clases} role="status">{contenido}</div>
+  );
+}
+
+/* ── Próxima entrega: la fecha límite, como hoja de calendario ──────
+   Es lo primero que tiene que ver el alumno al entrar: qué clase, hasta
+   cuándo y cuánto le queda. El color sigue el mismo código de urgencia. */
+type TonoEntrega = 'vencida' | 'hoy' | 'manana' | 'disponible';
+const TONOS_ENTREGA: TonoEntrega[] = ['vencida', 'hoy', 'manana', 'disponible'];
+const ENTREGA: Record<TonoEntrega, {
+  caja: string; mes: string; hoja: string; numero: string; cuenta: string; barra: string; etiqueta: string;
+}> = {
+  vencida: {
+    caja: 'bg-rose-500/[0.06] border-rose-500/25 hover:border-rose-500/40 light:bg-rose-50/80 light:border-rose-200',
+    mes: 'bg-rose-500 text-white', hoja: 'border-rose-500/35 light:border-rose-200',
+    numero: 'text-rose-100 light:text-rose-700', cuenta: 'text-rose-300 light:text-rose-700',
+    barra: 'bg-rose-500', etiqueta: 'Se te pasó la fecha',
+  },
+  hoy: {
+    caja: 'bg-orange-500/[0.06] border-orange-500/25 hover:border-orange-500/40 light:bg-orange-50/80 light:border-orange-200',
+    mes: 'bg-orange-500 text-white', hoja: 'border-orange-500/35 light:border-orange-200',
+    numero: 'text-orange-100 light:text-orange-700', cuenta: 'text-orange-300 light:text-orange-700',
+    barra: 'bg-orange-500', etiqueta: 'Vence hoy',
+  },
+  manana: {
+    caja: 'bg-amber-500/[0.05] border-amber-500/25 hover:border-amber-500/40 light:bg-amber-50/80 light:border-amber-200',
+    mes: 'bg-amber-400 text-amber-950', hoja: 'border-amber-400/35 light:border-amber-200',
+    numero: 'text-amber-50 light:text-amber-800', cuenta: 'text-amber-200 light:text-amber-700',
+    barra: 'bg-amber-400', etiqueta: 'Vence mañana',
+  },
+  disponible: {
+    caja: 'bg-gradient-to-br from-violet-500/[0.09] to-indigo-500/[0.03] border-violet-500/25 hover:border-violet-500/45 light:from-violet-50 light:to-white light:border-violet-200',
+    mes: 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white', hoja: 'border-violet-500/30 light:border-violet-200',
+    numero: 'text-white light:text-slate-900', cuenta: 'text-violet-200 light:text-violet-700',
+    barra: 'bg-gradient-to-r from-violet-500 to-indigo-400', etiqueta: 'Tu próxima entrega',
+  },
+};
+
+/** "2 días", "5 h", "40 min" desde una fecha ya pasada. */
+function haceCuanto(d: string, ahora: Date): string {
+  const ms = ahora.getTime() - new Date(d).getTime();
+  const h = ms / 3_600_000;
+  if (h < 1) return `${Math.max(1, Math.round(ms / 60_000))} min`;
+  if (h < 24) return `${Math.round(h)} h`;
+  const dias = Math.round(h / 24);
+  return dias === 1 ? '1 día' : `${dias} días`;
+}
+
+function ProximaEntrega({ aviso, ahora, onAbrir }: { aviso: Aviso; ahora: Date; onAbrir: (cl: ClassItem) => void }) {
+  const cl = aviso.clase!;
+  const tono = aviso.tono as TonoEntrega;
+  const t = ENTREGA[tono];
+  const plazo = new Date(cl.deadline!);
+  const mes = plazo.toLocaleDateString('es-AR', { month: 'short' }).replace('.', '');
+  const semana = plazo.toLocaleDateString('es-AR', { weekday: 'long' });
+  const cuenta = tono === 'vencida' ? `Venció hace ${haceCuanto(cl.deadline!, ahora)}` : `Te quedan ${cuantoFalta(cl.deadline, ahora)}`;
+  // Cuánto del plazo ya pasó, desde que abrió la clase hasta que cierra.
+  const abre = cl.unlockAt ? new Date(cl.unlockAt).getTime() : NaN;
+  const fraccion = Number.isFinite(abre) && plazo.getTime() > abre
+    ? Math.min(1, Math.max(0.03, (ahora.getTime() - abre) / (plazo.getTime() - abre)))
+    : null;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onAbrir(cl)}
+      className={`group w-full text-left rounded-3xl border p-4 sm:p-5 flex gap-4 sm:gap-5 cursor-pointer transition-colors ${t.caja}`}
+    >
+      {/* Hoja de calendario con el día de entrega */}
+      <div
+        className={`shrink-0 self-start w-[72px] sm:w-[84px] rounded-2xl overflow-hidden border bg-[#0d0c18] light:bg-white flex flex-col text-center shadow-lg shadow-black/30 light:shadow-slate-200/80 ${t.hoja}`}
+        aria-hidden
+      >
+        <span className={`text-[11px] font-bold py-1 capitalize tracking-wide ${t.mes}`}>{mes}</span>
+        <span className={`font-display text-[32px] sm:text-[38px] font-bold leading-none pt-2.5 tabular-nums ${t.numero}`}>{plazo.getDate()}</span>
+        <span className="text-[11px] text-slate-400 light:text-slate-500 pt-1 pb-2.5">{semana}</span>
+      </div>
+
+      <div className="flex-1 min-w-0 flex flex-col gap-3">
+        <div className="min-w-0">
+          <p className="text-[12px] font-semibold text-slate-400 light:text-slate-500">{t.etiqueta}</p>
+          <p className="font-display text-[17px] sm:text-lg font-bold text-white light:text-slate-900 leading-snug mt-0.5">{cl.title}</p>
+          <p className="text-[12px] text-slate-400 light:text-slate-500 mt-0.5">Módulo {cl.module ?? 1}, clase {cl.week}</p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="flex-1 min-w-0 space-y-2">
+            <p className={`text-[15px] font-semibold leading-tight ${t.cuenta}`}>
+              {cuenta}
+              <span className="text-[12px] font-normal text-slate-400 light:text-slate-500">
+                {tono === 'vencida' ? ` (era el ${fechaCorta(cl.deadline)})` : ` · hasta las ${soloHora(cl.deadline)}`}
+              </span>
+            </p>
+            {fraccion !== null && (
+              <div>
+                <div className="h-1.5 rounded-full bg-white/[0.07] light:bg-slate-200/80 overflow-hidden">
+                  <motion.div
+                    className={`h-full rounded-full ${t.barra}`}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${fraccion * 100}%` }}
+                    transition={{ duration: 1, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                  />
+                </div>
+                <div className="flex justify-between text-[11px] text-slate-500 light:text-slate-500 mt-1">
+                  <span>Abrió el {fechaCorta(cl.unlockAt)}</span>
+                  <span>Cierra el {fechaCorta(cl.deadline)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <span className={`inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-semibold shrink-0 transition-colors ${ESTILO[tono].boton}`}>
+            <Play className="w-3.5 h-3.5" fill="currentColor" />
+            {aviso.accion ?? 'Abrir clase'}
+          </span>
+        </div>
+
+        {tono === 'vencida' && (
+          <p className="text-[12px] text-rose-200/80 light:text-rose-700/90 leading-relaxed">
+            Todavía la podés entregar: queda como fuera de plazo, y la clase siguiente se abre cuando la entregues.
+          </p>
+        )}
+      </div>
+    </button>
   );
 }
 
@@ -378,7 +500,7 @@ export default function StudentDashboard({ user, cursos = [CURSO_FINANZAS], clas
       case 'manana':     return 'Vence mañana';
       case 'disponible': return p.clase.deadline ? `Hasta el ${fechaCorta(p.clase.deadline)}` : 'Disponible';
       case 'programada': return `Se abre el ${fechaCorta(p.clase.unlockAt)}`;
-      case 'bloqueada':  return p.anterior ? `Primero la clase ${p.anterior.week}` : 'Bloqueada';
+      case 'bloqueada':  return p.anterior ? `Primero entregá la clase ${p.anterior.week}` : 'Bloqueada';
       case 'entregada':  return notaDe(p) || 'Entregada';
     }
   };
@@ -400,9 +522,12 @@ export default function StudentDashboard({ user, cursos = [CURSO_FINANZAS], clas
         className="space-y-5"
       >
         <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1.5 min-w-0">
-            <p className="text-[11px] font-mono font-bold uppercase tracking-widest text-slate-400 light:text-slate-600 truncate">
-              {user.school || 'Fintly Campus'} · Nivel {activeLevel}
+          <div className="space-y-2 min-w-0">
+            <p className="flex items-center gap-2 text-[13px] text-slate-400 light:text-slate-600 min-w-0">
+              <span className="truncate">{user.school || 'Fintly Campus'}</span>
+              <span className="shrink-0 px-2 py-0.5 rounded-md bg-white/[0.06] light:bg-slate-100 text-[11px] font-semibold text-slate-300 light:text-slate-700">
+                Nivel {activeLevel}
+              </span>
             </p>
             <h1 className="font-display text-3xl sm:text-4xl font-bold text-white light:text-slate-900 tracking-tight leading-tight">
               {saludo}, <span className="gradient-text-brand">{user.name.split(' ')[0]}</span>
@@ -421,18 +546,38 @@ export default function StudentDashboard({ user, cursos = [CURSO_FINANZAS], clas
 
         {course && (
           <div className="space-y-2">
-            <div className="flex items-baseline justify-between gap-3 text-[12px]">
-              <span className="text-slate-300 light:text-slate-700 font-medium truncate">{course.name}</span>
-              <span className="text-slate-400 light:text-slate-600 font-mono shrink-0">{doneCount} de {total} · {pct}%</span>
+            <div className="flex items-baseline justify-between gap-3 text-[13px]">
+              <span className="text-slate-200 light:text-slate-800 font-semibold truncate">{course.name}</span>
+              <span className="text-slate-400 light:text-slate-600 shrink-0">
+                {doneCount} de {total} {total === 1 ? 'entregada' : 'entregadas'}
+              </span>
             </div>
-            <div className="h-1.5 bg-white/[0.06] light:bg-slate-200/70 rounded-full overflow-hidden">
-              <motion.div
-                className={`h-full rounded-full bg-gradient-to-r ${course.accent}`}
-                initial={{ width: 0 }}
-                animate={{ width: `${pct}%` }}
-                transition={{ duration: 1.1, delay: 0.3, ease: [0.16,1,0.3,1] }}
-              />
-            </div>
+            {/* Un tramo por clase: se ve el recorrido, no sólo un porcentaje */}
+            {total > 0 && total <= 16 ? (
+              <div className="flex gap-1" role="img" aria-label={`${doneCount} de ${total} clases entregadas`}>
+                {pasos.map((p) => (
+                  <span
+                    key={`${p.clase.module ?? 1}-${p.clase.week}`}
+                    className={`h-1.5 flex-1 rounded-full transition-colors ${
+                      p.estado === 'entregada'
+                        ? `bg-gradient-to-r ${course.accent}`
+                        : p.estado === 'disponible'
+                        ? 'bg-violet-500/35 light:bg-violet-300'
+                        : 'bg-white/[0.07] light:bg-slate-200'
+                    }`}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="h-1.5 bg-white/[0.06] light:bg-slate-200/70 rounded-full overflow-hidden">
+                <motion.div
+                  className={`h-full rounded-full bg-gradient-to-r ${course.accent}`}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${pct}%` }}
+                  transition={{ duration: 1.1, delay: 0.3, ease: [0.16,1,0.3,1] }}
+                />
+              </div>
+            )}
           </div>
         )}
       </motion.div>
@@ -475,7 +620,11 @@ export default function StudentDashboard({ user, cursos = [CURSO_FINANZAS], clas
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08, duration: 0.4 }}
       >
-        <AvisoLinea aviso={aviso} onAbrir={abrir} />
+        {aviso.clase?.deadline && TONOS_ENTREGA.includes(aviso.tono as TonoEntrega) ? (
+          <ProximaEntrega aviso={aviso} ahora={now} onAbrir={abrir} />
+        ) : (
+          <AvisoLinea aviso={aviso} onAbrir={abrir} />
+        )}
       </motion.div>
 
       {/* ── CLASS LIST ───────────────────────────────────── */}
@@ -527,73 +676,109 @@ export default function StudentDashboard({ user, cursos = [CURSO_FINANZAS], clas
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.18 }}
-            className="space-y-1.5"
+            className="relative space-y-2"
           >
-            {visible.length > 0 ? visible.map((p, i) => {
+            {/* Camino que une las clases: se desbloquean en orden */}
+            {filter === 'all' && visible.length > 1 && (
+              <span
+                aria-hidden
+                className="absolute left-[17px] top-7 bottom-7 w-0.5 rounded-full bg-gradient-to-b from-violet-500/45 via-white/[0.08] to-white/[0.04] light:from-violet-300 light:via-slate-200 light:to-slate-100"
+              />
+            )}
+            {visible.length > 0 ? visible.map((p) => {
               const cl = p.clase;
               const open = sePuedeAbrir(p);
               const done = p.estado === 'entregada';
               const tono = tonoDePaso(p, now);
               const etiqueta = ETIQUETA[tono];
+              const conPlazo = !done && open && !!cl.deadline && (tono === 'disponible' || tono === 'manana');
               return (
-                <motion.div
+                <div
                   key={`${cl.module ?? 1}-${cl.week}`}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.035, duration: 0.28 }}
-                  onClick={() => open && abrir(cl)}
-                  className={`group relative overflow-hidden flex items-center gap-3 sm:gap-4 pl-4 pr-3 sm:pr-4 py-3.5 rounded-xl border transition-all duration-200 ${
-                    tono === 'vencida'
-                      ? 'bg-rose-500/[0.03] border-rose-500/20 light:bg-rose-50/50 light:border-rose-200 cursor-pointer hover:bg-rose-500/[0.06]'
-                      : tono === 'hoy'
-                      ? 'bg-orange-500/[0.03] border-orange-500/20 light:bg-orange-50/50 light:border-orange-200 cursor-pointer hover:bg-orange-500/[0.06]'
-                      : done
-                      ? 'bg-emerald-500/[0.04] border-emerald-500/[0.12] light:bg-emerald-50/60 light:border-emerald-200/60 cursor-pointer hover:bg-emerald-500/[0.07]'
-                      : open
-                      ? 'bg-white/[0.03] light:bg-white border-white/[0.07] light:border-slate-200 cursor-pointer hover:bg-white/[0.06] light:hover:bg-slate-50 hover:border-violet-500/20'
-                      : 'bg-white/[0.015] border-white/[0.04] light:bg-slate-50 light:border-slate-200 opacity-60 cursor-not-allowed'
-                  }`}
+                  className="relative flex items-center gap-3"
                 >
-                  {etiqueta.franja && <span className={`absolute left-0 inset-y-0 w-[3px] ${etiqueta.franja}`} />}
-
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-mono font-bold text-[11px] shrink-0 transition-transform group-hover:scale-105 ${
+                  {/* Punto del recorrido */}
+                  <div className={`relative z-10 w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0 border-2 ${
                     done
-                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 light:bg-emerald-50 light:border-emerald-200 light:text-emerald-600'
+                      ? 'bg-emerald-500 border-emerald-500 text-white light:bg-emerald-500'
+                      : tono === 'vencida'
+                      ? 'bg-[#16070b] border-rose-500/70 text-rose-300 light:bg-rose-50 light:text-rose-600'
+                      : tono === 'hoy'
+                      ? 'bg-[#170c05] border-orange-500/70 text-orange-300 light:bg-orange-50 light:text-orange-600'
                       : open
-                      ? 'bg-violet-500/10 border border-violet-500/18 text-violet-400 light:bg-violet-50 light:border-violet-200 light:text-violet-600'
-                      : 'bg-white/[0.05] border border-white/[0.06] text-slate-400 light:text-slate-600'
+                      ? 'bg-[#120f24] border-violet-500/70 text-violet-200 light:bg-violet-50 light:text-violet-700 shadow-[0_0_0_4px_rgba(124,58,237,0.12)]'
+                      : 'bg-[#0b0a13] border-white/[0.09] text-slate-500 light:bg-slate-50 light:border-slate-200 light:text-slate-400'
                   }`}>
-                    {done ? <CheckCircle className="w-4 h-4" /> : open ? cl.week : <Lock className="w-3.5 h-3.5" />}
+                    {done ? <CheckCircle className="w-4 h-4" strokeWidth={2.5} /> : open ? cl.week : <Lock className="w-3.5 h-3.5" />}
                   </div>
 
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-[13px] font-medium leading-snug truncate transition-colors ${
-                      open
-                        ? done
-                          ? 'text-emerald-300 light:text-emerald-700'
-                          : 'text-white light:text-slate-800 group-hover:text-violet-300 light:group-hover:text-violet-700'
-                        : 'text-slate-400 light:text-slate-600'
-                    }`}>
-                      {cl.title}
-                    </p>
-                    <p className="text-[11px] text-slate-400 light:text-slate-600 font-mono mt-0.5">
-                      Módulo {cl.module ?? 1} · Clase {cl.week}
-                    </p>
-                  </div>
+                  <div
+                    onClick={() => open && abrir(cl)}
+                    onKeyDown={(e) => { if (open && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); abrir(cl); } }}
+                    role={open ? 'button' : undefined}
+                    tabIndex={open ? 0 : undefined}
+                    aria-disabled={open ? undefined : true}
+                    className={`group relative overflow-hidden flex-1 min-w-0 flex items-center gap-3 sm:gap-4 pl-4 pr-3 sm:pr-4 py-3.5 rounded-2xl border transition-colors duration-200 ${
+                      tono === 'vencida'
+                        ? 'bg-rose-500/[0.04] border-rose-500/25 light:bg-rose-50/60 light:border-rose-200 cursor-pointer hover:bg-rose-500/[0.07]'
+                        : tono === 'hoy'
+                        ? 'bg-orange-500/[0.04] border-orange-500/25 light:bg-orange-50/60 light:border-orange-200 cursor-pointer hover:bg-orange-500/[0.07]'
+                        : done
+                        ? 'bg-emerald-500/[0.035] border-emerald-500/[0.14] light:bg-emerald-50/50 light:border-emerald-200/70 cursor-pointer hover:bg-emerald-500/[0.06]'
+                        : open
+                        ? 'bg-white/[0.035] light:bg-white border-white/[0.08] light:border-slate-200 cursor-pointer hover:bg-white/[0.06] light:hover:bg-violet-50/40 hover:border-violet-500/30'
+                        : 'bg-transparent border-dashed border-white/[0.08] light:border-slate-300/70 cursor-not-allowed'
+                    }`}
+                  >
+                    {etiqueta.franja && <span className={`absolute left-0 inset-y-0 w-[3px] ${etiqueta.franja}`} />}
 
-                  <div className="shrink-0 flex items-center gap-1.5">
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap ${etiqueta.clase}`}>
-                      {tono === 'vencida' && <AlertTriangle className="w-3 h-3" />}
-                      {tono === 'hoy' && <AlarmClock className="w-3 h-3" />}
-                      {tono === 'programada' && <CalendarClock className="w-3 h-3" />}
-                      {done && <CheckCircle className="w-3 h-3" />}
-                      <span>{textoEtiqueta(p, tono)}</span>
-                    </span>
-                    {open && (
-                      <ChevronRight className="hidden sm:block w-4 h-4 text-slate-500 group-hover:text-violet-400 group-hover:translate-x-0.5 transition-all" />
-                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-[14px] font-semibold leading-snug truncate transition-colors ${
+                        open
+                          ? done
+                            ? 'text-emerald-200 light:text-emerald-800'
+                            : 'text-white light:text-slate-900 group-hover:text-violet-200 light:group-hover:text-violet-700'
+                          : 'text-slate-400 light:text-slate-500'
+                      }`}>
+                        {cl.title}
+                      </p>
+                      <p className="text-[12px] text-slate-500 light:text-slate-500 mt-0.5">
+                        Módulo {cl.module ?? 1}, clase {cl.week}
+                      </p>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      {conPlazo ? (
+                        // La fecha límite, bien a la vista: día de la semana, día y hora.
+                        <span className={`inline-flex items-center gap-2 pl-2 pr-2.5 py-1.5 rounded-xl whitespace-nowrap ${etiqueta.clase}`}>
+                          <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+                          <span className="flex flex-col leading-tight text-left">
+                            <span className="hidden sm:block text-[10px] font-medium opacity-80">
+                              {tono === 'manana' ? 'Vence mañana' : 'Entregá hasta el'}
+                            </span>
+                            <span className="text-[12px] font-bold">
+                              {new Date(cl.deadline!).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' }).replace(/[.,]/g, '')}
+                              <span className="font-medium opacity-80">, {soloHora(cl.deadline)}</span>
+                            </span>
+                          </span>
+                        </span>
+                      ) : open || tono === 'programada' ? (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap ${etiqueta.clase}`}>
+                          {tono === 'vencida' && <AlertTriangle className="w-3 h-3" />}
+                          {tono === 'hoy' && <AlarmClock className="w-3 h-3" />}
+                          {tono === 'programada' && <CalendarClock className="w-3 h-3" />}
+                          {done && <CheckCircle className="w-3 h-3" />}
+                          <span>{textoEtiqueta(p, tono)}</span>
+                        </span>
+                      ) : (
+                        <span className="text-[12px] text-slate-500 light:text-slate-500 text-right">{textoEtiqueta(p, tono)}</span>
+                      )}
+                      {open && (
+                        <ChevronRight className="hidden sm:block w-4 h-4 text-slate-500 group-hover:text-violet-300 group-hover:translate-x-0.5 transition-all" />
+                      )}
+                    </div>
                   </div>
-                </motion.div>
+                </div>
               );
             }) : total > 0 ? (
               <div className="surface-subtle rounded-2xl py-12 text-center space-y-3">
