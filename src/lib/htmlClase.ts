@@ -103,6 +103,47 @@ export function prepararParaMostrar(html: string, tema: 'dark' | 'light'): strin
   return /<\/body>/i.test(salida) ? salida.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${PUENTE}</body>`) : `${salida}${PUENTE}`;
 }
 
+/**
+ * ¿Es un mazo exportado de Claude Slides?
+ *
+ * Esos HTML traen su propio visor: cuando la ventana tiene forma de pantalla
+ * (horizontal) muestran una diapositiva por vez, con flechas, deslizar y sus
+ * animaciones. Pero si la caja crece al alto del contenido, como con las
+ * lecturas, quedan todas una abajo de la otra. Por eso se muestran en una caja
+ * de 16:9 fija y con un puente distinto (ver prepararMazo).
+ */
+export const esMazo = (html: string) => /<section\b[^>]*class="deck-slide"/i.test(html);
+
+/**
+ * Puente para los mazos: el campus le pide "siguiente" / "anterior" (se los
+ * pasa como si fueran las flechas del teclado, que el mazo ya entiende) y el
+ * mazo avisa en qué diapositiva está, para mostrar "3 / 8".
+ */
+const PUENTE_MAZO = `<script>(function(){
+var M=${JSON.stringify(MARCA_MENSAJE)},ult='';
+/* El campus ya muestra "3 / 8" abajo: el contador propio del mazo sobra. */
+var est=document.createElement('style');est.textContent='.deck-pager{display:none!important}';(document.head||document.documentElement).appendChild(est);
+function estado(){var s=[].slice.call(document.querySelectorAll('.deck-slide'));if(!s.length)return;
+var i=0;if(document.documentElement.classList.contains('deck-stage')){for(var k=0;k<s.length;k++){if(!s[k].hasAttribute('data-off')){i=k;break;}}}
+var clave=i+'/'+s.length;if(clave!==ult){ult=clave;parent.postMessage({m:M,tipo:'diapo',i:i,n:s.length},'*');}}
+window.addEventListener('message',function(e){if(e.source!==parent)return;var d=e.data;if(!d||d.m!==M||d.tipo!=='ir')return;
+window.dispatchEvent(new KeyboardEvent('keydown',{key:d.dir>0?'ArrowRight':'ArrowLeft',bubbles:true,cancelable:true}));});
+document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;if(a&&!/^#/.test(a.getAttribute('href')||'')){a.setAttribute('target','_blank');a.setAttribute('rel','noopener noreferrer');}},true);
+var main=document.querySelector('main')||document.body;
+if(window.MutationObserver)new MutationObserver(estado).observe(main,{attributes:true,subtree:true,attributeFilter:['data-off']});
+window.addEventListener('load',estado);setTimeout(estado,300);setInterval(estado,1000);
+/* "Listo" recién cuando las letras y las imágenes de la primera diapositiva se pueden dibujar. */
+function listo(){parent.postMessage({m:M,tipo:'listo'},'*');}
+window.addEventListener('load',function(){var s=document.querySelector('.deck-slide');var imgs=s?[].slice.call(s.querySelectorAll('img')):[];
+var esperas=imgs.map(function(i){return i.decode?i.decode().catch(function(){}):null;});if(document.fonts&&document.fonts.ready)esperas.push(document.fonts.ready);
+Promise.all(esperas).then(function(){requestAnimationFrame(function(){requestAnimationFrame(listo);});});setTimeout(listo,8000);});
+})();</script>`;
+
+/** El mazo listo para el iframe: con su puente, sin tocarle el tema (las diapositivas tienen su propio fondo). */
+export function prepararMazo(html: string): string {
+  return /<\/body>/i.test(html) ? html.replace(/<\/body>(?![\s\S]*<\/body>)/i, `${PUENTE_MAZO}</body>`) : `${html}${PUENTE_MAZO}`;
+}
+
 /** Identificador nuevo para un contenido ('c_' + fecha + azar). */
 export const nuevoIdDeContenido = () =>
   `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;

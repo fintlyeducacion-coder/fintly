@@ -23,7 +23,7 @@ import { contarPalabras, htmlATexto, textoAHtml, tieneTexto } from '../src/lib/c
 import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../src/lib/embeds';
 import { aInputLocal, todaviaNo, urgencia, yaPaso } from '../src/lib/fechas';
 import { alcanceDeCurso, etiquetaNivel, idDeCurso, inscripcionesDe, listaDeCursos, nivelEn, nombreModulo } from '../src/lib/cursos';
-import { extraerHtmlDeArtifact, prepararParaMostrar, problemaDelHtml, LIMITE_HTML_BYTES } from '../src/lib/htmlClase';
+import { esMazo, extraerHtmlDeArtifact, prepararMazo, prepararParaMostrar, problemaDelHtml, LIMITE_HTML_BYTES } from '../src/lib/htmlClase';
 import { assignedId, entregaEsDeLaClase, submissionId, submissionIdExistente, syllabusId } from '../src/classKeys';
 
 let pasaron = 0;
@@ -554,6 +554,16 @@ prueba('HTML de clase: se le pone el tema del campus y el puente una sola vez', 
   assert.ok(listo.indexOf('fintly-html') > listo.indexOf('var s='));
   // Sin <html> ni <head>, igual funciona.
   assert.ok(prepararParaMostrar('<p>hola</p>', 'light').includes('fintly-html'));
+});
+
+prueba('HTML de clase: reconoce un mazo de Claude Slides y le pone su puente', () => {
+  const mazo = '<!doctype html><html><head></head><body><main><section class="deck-slide" id="1"><div>a</div></section></main><div class="deck-pager"></div></body></html>';
+  assert.equal(esMazo(mazo), true);
+  assert.equal(esMazo('<html><body><section class="intro">x</section></body></html>'), false, 'una lectura no es un mazo');
+  const listo = prepararMazo(mazo);
+  assert.equal((listo.match(/fintly-html/g) || []).length, 1);
+  assert.ok(listo.indexOf('fintly-html') > listo.indexOf('deck-pager'), 'el puente va al final del body');
+  assert.ok(!listo.includes('overflow-y:hidden'), 'al mazo no se le agrega el puente de alto de las lecturas');
 });
 
 // ── Resultado ───────────────────────────────────────────────────
