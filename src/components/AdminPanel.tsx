@@ -4,7 +4,7 @@ import {
   Plus, BookOpen, Trash2, Users, School, ChevronRight, CheckCircle2, Clock,
   ChevronDown, Check, TrendingUp, Sparkles, UserCheck, UserX, AlertCircle,
   BarChart3, Award, Calendar, Layers, ShieldAlert, ArrowUpRight,
-  AlertTriangle, ArrowLeft, Search, Pencil
+  AlertTriangle, ArrowLeft, Search, Pencil, Eye
 } from 'lucide-react';
 import { ClassItem, Student, ActivitySubmission, User, Curso, Inscripcion } from '../types';
 import { FINANZAS, CURSO_FINANZAS, cursoDe, inscripcionesDe, nivelesDe, nombreModulo } from '../lib/cursos';
@@ -12,6 +12,7 @@ import { metricasDeCurso } from '../lib/metricas';
 import NuevoCurso from './NuevoCurso';
 import EditarCurso from './EditarCurso';
 import ClassModal from './ClassModal';
+import ClassView from './ClassView';
 import PublicarClase from './PublicarClase';
 import { COURSES, ASSOCIATED_SCHOOLS, CLASES_POR_MODULO } from '../data';
 import { entregaEsDeLaClase } from '../classKeys';
@@ -76,6 +77,8 @@ export default function AdminPanel({
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
   // Clase que se está publicando o reprogramando desde la Biblioteca
   const [publicando, setPublicando] = useState<ClassItem | null>(null);
+  // Clase que se está mirando en vista previa desde la Biblioteca (lo guardado, como lo ve el alumno)
+  const [viendo, setViendo] = useState<ClassItem | null>(null);
 
   // Aprobación de usuarios state
   const [approvalRoles, setApprovalRoles] = useState<Record<string, 'alumno' | 'directivo'>>({});
@@ -854,6 +857,14 @@ export default function AdminPanel({
 
                         <div className="flex items-center gap-2 shrink-0">
                           <button
+                            onClick={() => setViendo(cl)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 light:border-neutral-200 hover:bg-white/5 light:hover:bg-neutral-50 text-xs text-gray-300 light:text-neutral-600 hover:text-white light:hover:text-neutral-900 cursor-pointer"
+                            title="Ver la clase como la ven los alumnos"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                            Vista previa
+                          </button>
+                          <button
                             onClick={() => handleEditClass(cl)}
                             className="px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 text-xs text-gray-300 hover:text-white cursor-pointer"
                           >
@@ -1470,6 +1481,37 @@ export default function AdminPanel({
             onAssignClass={onAssignClass}
             curso={cursoInfo}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Vista previa desde la lista: la misma pantalla del alumno, con lo guardado */}
+      <AnimatePresence>
+        {viendo && (
+          <motion.div
+            key="vista-previa"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-110 overflow-y-auto bg-[#050508] light:bg-[#f8f8fc]"
+          >
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-5 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2 px-3 py-1 bg-violet-500/10 border border-violet-500/30 rounded-full">
+                <Eye className="w-3.5 h-3.5 text-violet-400 light:text-violet-600" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400 light:text-violet-600 font-mono">Vista previa</span>
+              </div>
+              <span className="text-xs text-gray-400 light:text-neutral-500 italic">Así ven la clase los alumnos. La entrega está desactivada.</span>
+            </div>
+            <ClassView
+              user={{ email: 'vista-previa', name: 'Vista previa', role: 'alumno', initials: 'VP', level: viendo.level }}
+              curso={cursos.find((c) => c.id === cursoDe(viendo)) ?? cursoInfo}
+              classItem={viendo}
+              submissions={[]}
+              onBack={() => setViendo(null)}
+              onSubmitActivity={() => {}}
+              vistaPrevia
+              textoVolver="Volver a la lista de clases"
+            />
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

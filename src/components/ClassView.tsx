@@ -70,10 +70,14 @@ interface Props {
   submissions: ActivitySubmission[];
   onBack: () => void;
   onSubmitActivity: (text: string) => void | Promise<void>;
+  /** Vista previa del admin: la clase igual que la ve el alumno, pero sin entregar ni guardar borradores. */
+  vistaPrevia?: boolean;
+  /** Texto del botón de volver (por defecto, "Volver al dashboard"). */
+  textoVolver?: string;
 }
 
 /* ── ClassView ────────────────────────────────────────────────── */
-export default function ClassView({ user, curso, classItem, submissions, onBack, onSubmitActivity }: Props) {
+export default function ClassView({ user, curso, classItem, submissions, onBack, onSubmitActivity, vistaPrevia = false, textoVolver }: Props) {
   const [tab,           setTab]           = useState<Tab>('content');
   const pestanas = useRef<HTMLDivElement>(null);
   const indice   = TABS.findIndex((t) => t.id === tab);
@@ -119,7 +123,7 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
   const gradeCls  = notaMostrada ? (GRADE_COLORS[notaMostrada] ?? 'bg-violet-600/90 border-violet-500/50 text-white') : '';
 
   useEffect(() => {
-    if (existing) { setResponse(''); setDraftBanner(false); return; }
+    if (existing || vistaPrevia) { setResponse(''); setDraftBanner(false); return; }
     // Un borrador con la clave vieja sólo puede ser del módulo 1.
     const saved =
       localStorage.getItem(draftKey) ??
@@ -133,13 +137,14 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
     // y el alumno se entera recién al final, con el texto ya escrito.
     const text = rawText.slice(0, MAX_CARACTERES);
     setResponse(text);
+    if (vistaPrevia) return;
     if (text.trim()) localStorage.setItem(draftKey, text);
     else localStorage.removeItem(draftKey);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!response.trim() || bloqueada || enviando) return;
+    if (!response.trim() || bloqueada || enviando || vistaPrevia) return;
 
     setEnviando(true);
     setErrorEnvio(null);
@@ -177,7 +182,7 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
         className="flex items-center gap-1.5 text-slate-500 hover:text-white light:hover:text-slate-800 text-[12px] font-semibold mb-5 sm:mb-7 transition-colors cursor-pointer group"
       >
         <ArrowLeft className="w-3.5 h-3.5 transition-transform group-hover:-translate-x-0.5" />
-        <span>Volver al dashboard</span>
+        <span>{textoVolver ?? 'Volver al dashboard'}</span>
       </motion.button>
 
       {/* Header */}
@@ -436,10 +441,11 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
                       </span>
                       <button
                         type="submit"
-                        disabled={bloqueada || !response.trim() || enviando}
+                        disabled={bloqueada || !response.trim() || enviando || vistaPrevia}
+                        title={vistaPrevia ? 'En la vista previa no se entrega' : undefined}
                         className="liquid-glass-btn w-full sm:w-auto px-6 py-3 sm:py-2.5 text-[13px]"
                       >
-                        {enviando ? 'Enviando…' : 'Entregar actividad →'}
+                        {vistaPrevia ? 'Entregar actividad (vista previa)' : enviando ? 'Enviando…' : 'Entregar actividad →'}
                       </button>
                     </div>
                   </div>

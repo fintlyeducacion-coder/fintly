@@ -75,6 +75,29 @@ function arriba(){parent.postMessage({m:M,tipo:'arriba'},'*');}
 var st=window.scrollTo;window.scrollTo=function(x,y){var t=typeof x==='object'&&x?x.top:y;if(!t)arriba();try{st.apply(window,arguments)}catch(e){}};
 window.scroll=window.scrollTo;
 document.addEventListener('click',function(e){var a=e.target&&e.target.closest?e.target.closest('a[href]'):null;if(a&&!/^#/.test(a.getAttribute('href')||'')){a.setAttribute('target','_blank');a.setAttribute('rel','noopener noreferrer');}},true);
+/* Transición en CUALQUIER cambio de claro/oscuro: el del campus o el botón propio de la página.
+   Cuando la página cambia el tema (data-theme, una clase "dark"/"light", variables en style...),
+   el observador corre antes de que se dibuje: vuelve un instante al valor anterior, prende la
+   transición, y recién ahí deja el nuevo. Así se funde sin importar cómo esté hecho el botón. */
+var TR=null,TT=0,TEMA=/dark|light|theme|night|day|oscur|clar/i;
+function conTransicion(){if(!TR){TR=document.createElement('style');TR.textContent='*,*::before,*::after{transition:background-color .5s ease,background .5s ease,color .5s ease,border-color .5s ease,outline-color .5s ease,fill .5s ease,stroke .5s ease,box-shadow .5s ease,text-decoration-color .5s ease!important}';}
+(document.head||document.documentElement).appendChild(TR);clearTimeout(TT);TT=setTimeout(function(){if(TR.parentNode)TR.parentNode.removeChild(TR);},700);}
+function esDeTema(a,b){a=(a||'').split(/\\s+/);b=(b||'').split(/\\s+/);
+return a.concat(b).some(function(x){return x&&(a.indexOf(x)<0||b.indexOf(x)<0)&&TEMA.test(x);});}
+var obsT=window.MutationObserver?new MutationObserver(function(ms){var c=[],vistos=[];
+ms.forEach(function(m){var el=m.target,n=m.attributeName;if(vistos.some(function(v){return v[0]===el&&v[1]===n;}))return;vistos.push([el,n]);
+var nuevo=el.getAttribute(n);if(nuevo===m.oldValue)return;if(n==='class'&&!esDeTema(m.oldValue,nuevo))return;c.push([el,n,m.oldValue,nuevo]);});
+if(!c.length)return;obsT.disconnect();conTransicion();
+function poner(el,n,v){if(v===null)el.removeAttribute(n);else el.setAttribute(n,v);}
+c.forEach(function(x){poner(x[0],x[1],x[2]);});getComputedStyle(document.documentElement).color;void document.documentElement.offsetWidth;
+c.forEach(function(x){poner(x[0],x[1],x[3]);});observar();}):null;
+function observar(){if(!obsT)return;var o={attributes:true,attributeOldValue:true,attributeFilter:['class','data-theme','data-mode','data-color-scheme','data-bs-theme','style']};
+obsT.observe(document.documentElement,o);if(document.body)obsT.observe(document.body,o);}
+observar();
+/* El campus avisa su tema: se cambia sin recargar la página (no pierde lo marcado ni dónde estaba leyendo). */
+window.addEventListener('message',function(e){if(e.source!==parent)return;var d=e.data;if(!d||d.m!==M||d.tipo!=='tema'||(d.tema!=='dark'&&d.tema!=='light'))return;
+var h=document.documentElement;if(h.getAttribute('data-theme')===d.tema)return;
+h.setAttribute('data-theme',d.tema);var mc=document.querySelector('meta[name="color-scheme"]');if(mc)mc.setAttribute('content',d.tema);});
 window.addEventListener('load',alto);
 if(window.ResizeObserver){new ResizeObserver(alto).observe(document.documentElement);}
 setInterval(alto,700);alto();

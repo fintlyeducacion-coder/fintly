@@ -59,6 +59,13 @@ body.theme-switching *::after {
     opacity 0.45s ease !important;
 }
 
+/* Fundido de toda la pantalla al cambiar el tema (ver toggleTheme en App.tsx) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.55s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 /* ── Scrollbar ────────────────────────────────────────────────────── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

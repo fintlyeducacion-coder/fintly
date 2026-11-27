@@ -115,10 +115,16 @@ export default function HtmlInteractivo({ contenidoId, html, titulo, altoMinimo 
 
   const mazo = useMemo(() => !!cargado && esMazo(cargado), [cargado]);
   useEffect(() => { setDiapo(null); setListo(false); }, [cargado]);
+  // El tema sólo se usa al armar la caja: después se cambia con un mensaje (abajo),
+  // así cambiar claro/oscuro no la recarga, no parpadea y no vuelve a la primera diapositiva.
   const srcDoc = useMemo(
-    () => (cargado ? (mazo ? prepararMazo(cargado) : prepararParaMostrar(cargado, tema)) : ''),
-    [cargado, tema, mazo]
+    () => (cargado ? (mazo ? prepararMazo(cargado) : prepararParaMostrar(cargado, temaActual())) : ''),
+    [cargado, mazo]
   );
+  const enviarTema = () => {
+    if (!mazo) ref.current?.contentWindow?.postMessage({ m: MARCA_MENSAJE, tipo: 'tema', tema: temaActual() }, '*');
+  };
+  useEffect(enviarTema, [tema, mazo]);
 
   if (error) {
     return (
@@ -141,6 +147,8 @@ export default function HtmlInteractivo({ contenidoId, html, titulo, altoMinimo 
       ref={ref}
       title={titulo}
       srcDoc={srcDoc}
+      // Por si el tema cambió mientras la caja cargaba.
+      onLoad={enviarTema}
       // Corre su código, pero no puede tocar la sesión ni la base: sin allow-same-origin.
       sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-forms"
       allow="fullscreen"

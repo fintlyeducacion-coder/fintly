@@ -5,6 +5,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { ASSOCIATED_SCHOOLS, SIN_ASIGNAR, COLEGIO_INTERNO } from './data';
 import { ClassItem, User, Student, ActivitySubmission, Curso, Inscripcion } from './types';
@@ -641,6 +642,32 @@ export default function App() {
     const t = setTimeout(() => document.body.classList.remove('theme-switching'), 500);
     return () => clearTimeout(t);
   }, [theme]);
+
+  /**
+   * Cambiar claro/oscuro con un fundido de toda la pantalla, no de golpe.
+   *
+   * Con View Transitions el navegador saca una foto de la pantalla, aplica el
+   * tema nuevo y funde una en otra: así también se suavizan los degradés, las
+   * partículas del fondo y el contenido de las clases (que CSS solo no anima).
+   * Si el navegador no lo tiene, se activa 'theme-switching' ANTES de cambiar
+   * el tema, para que las transiciones de colores de index.css lleguen a correr.
+   */
+  const toggleTheme = () => {
+    const next = theme === 'light' ? 'dark' : 'light';
+    const aplicar = () => {
+      document.body.classList.toggle('light', next === 'light');
+      setTheme(next);
+    };
+    const reducir = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    if (!reducir && typeof doc.startViewTransition === 'function') {
+      doc.startViewTransition(() => flushSync(aplicar));
+      return;
+    }
+    document.body.classList.add('theme-switching');
+    void document.body.offsetWidth; // que el navegador registre la clase antes del cambio de colores
+    aplicar();
+  };
 
   /**
    * Avance de cada alumno, calculado en memoria a partir de clases y entregas.
@@ -1306,7 +1333,7 @@ export default function App() {
             onLogout={handleLogout}
             onNavigateHome={handleNavigateHome}
             theme={theme}
-            onToggleTheme={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+            onToggleTheme={toggleTheme}
             classes={currentUser.role === 'alumno' ? clasesQuePuedeAbrir : classes}
             onOpenClass={handleOpenClass}
           />
