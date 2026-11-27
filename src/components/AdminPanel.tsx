@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Plus, BookOpen, Trash2, Users, School, ChevronRight, CheckCircle2, Clock,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ClassItem, Student, ActivitySubmission, User, Curso, Inscripcion } from '../types';
 import { FINANZAS, CURSO_FINANZAS, cursoDe, inscripcionesDe, nivelesDe, nombreModulo } from '../lib/cursos';
+import { metricasDeCurso } from '../lib/metricas';
 import NuevoCurso from './NuevoCurso';
 import EditarCurso from './EditarCurso';
 import ClassModal from './ClassModal';
@@ -234,91 +235,18 @@ export default function AdminPanel({
   const [userSearchQuery, setUserSearchQuery] = useState('');
 
   // ─── CÁLCULOS DE MÉTRICAS DE NEGOCIO Y EFECTIVIDAD ─────────────────────────
-  const now = new Date();
-  const totalStudentsCount = students.length;
-  
-  // Colegios activos (colegios con al menos 1 alumno)
-  const activeSchoolsSet = new Set(
-    students.map(s => s.school?.trim().toLowerCase()).filter(Boolean)
+  // Cada curso se mide por separado: sus clases, sus entregas y los alumnos
+  // inscriptos en él, cada uno con su nivel en ese curso. Antes se mezclaban
+  // las clases de todos los cursos con el nivel de Finanzas del alumno.
+  const [cursoMetricas, setCursoMetricas] = useState<string>(FINANZAS);
+  const metricas = useMemo(
+    () => metricasDeCurso(cursoMetricas, students, classes, submissions, ASSOCIATED_SCHOOLS),
+    [students, classes, submissions, cursoMetricas]
   );
-  // Cero es cero: antes, sin alumnos, mostraba los seis colegios del convenio.
-  const activeSchoolsCount = activeSchoolsSet.size;
 
-  // Usuarios pendientes de aprobación (role === 'pausado')
+  // Usuarios pendientes de aprobación (role === 'pausado'). Es de todo el campus, no de un curso.
   const pendingUsers = allUsers.filter(u => u.role === 'pausado');
   const activeUsers = allUsers.filter(u => u.role !== 'pausado');
-
-  // Clases con deadline vencido a hoy
-  const pastDeadlineClasses = classes.filter(cl => !cl.isSyllabus && cl.deadline && now > new Date(cl.deadline));
-
-  // Cálculo de entregas esperadas para clases vencidas:
-  // Para cada alumno, cuántas clases vencidas corresponden a su nivel y colegio
-  let totalExpectedDueSubmissions = 0;
-  let totalOnTimeSubmissions = 0;
-  let totalDoneSubmissionsForDueClasses = 0;
-
-  students.forEach(student => {
-    const studentSchool = student.school?.toLowerCase() || '';
-    // Solo las clases publicadas a su colegio: las plantillas del syllabus no
-    // le corresponden a ningun alumno y distorsionaban la tasa de efectividad.
-    const dueForStudent = pastDeadlineClasses.filter(
-      (cl) => cl.level === student.level && cl.school?.toLowerCase() === studentSchool
-    );
-
-    totalExpectedDueSubmissions += dueForStudent.length;
-
-    dueForStudent.forEach(cl => {
-      const studentSub = submissions.find(
-        (sub) =>
-          sub.studentEmail.toLowerCase() === (student.email || '').toLowerCase() &&
-          entregaEsDeLaClase(sub, cl)
-      );
-
-      if (studentSub) {
-        totalDoneSubmissionsForDueClasses++;
-        // On-time check: entregado antes o en la fecha del deadline
-        if (cl.deadline && new Date(studentSub.submittedAt) <= new Date(cl.deadline)) {
-          totalOnTimeSubmissions++;
-        }
-      }
-    });
-  });
-
-  // Efectividad de completado a tiempo: % de entregas hechas ANTES del deadline
-  const onTimeEffectivenessPct = totalExpectedDueSubmissions > 0
-    ? Math.round((totalOnTimeSubmissions / totalExpectedDueSubmissions) * 100)
-    : null; // todavía no venció ningún plazo: no hay nada que medir
-
-  // Efectividad de entrega total: % de entregas hechas en algún momento (a tiempo o tarde)
-  const totalDeliveryEffectivenessPct = totalExpectedDueSubmissions > 0
-    ? Math.round((totalDoneSubmissionsForDueClasses / totalExpectedDueSubmissions) * 100)
-    : null;
-
-  // Progreso promedio general
-  const overallAvgProgress = students.length > 0
-    ? Math.round(students.reduce((acc, s) => acc + ((s.progress / (s.total || 1)) * 100), 0) / students.length)
-    : 0;
-
-  // Métricas por colegio
-  const schoolMetrics = ASSOCIATED_SCHOOLS.map(schoolName => {
-    const schoolStudents = students.filter(s => s.school?.toLowerCase() === schoolName.toLowerCase());
-    const schoolStudentCount = schoolStudents.length;
-    const avgProg = schoolStudentCount > 0
-      ? Math.round(schoolStudents.reduce((acc, s) => acc + ((s.progress / (s.total || 1)) * 100), 0) / schoolStudentCount)
-      : 0;
-    
-    // Alumnos al día vs atrasados
-    const okCount = schoolStudents.filter(s => s.status === 'ok').length;
-    const warnCount = schoolStudents.filter(s => s.status === 'warn').length;
-
-    return {
-      name: schoolName,
-      studentCount: schoolStudentCount,
-      avgProgress: avgProg,
-      okCount,
-      warnCount
-    };
-  });
 
   // ─── HANDLERS DE BIBLIOTECA ───────────────────────────────────────────────
   const handleEditClass = (cl: ClassItem) => {
@@ -567,6 +495,25 @@ export default function AdminPanel({
             exit={{ opacity: 0, y: -10 }}
             className="space-y-8"
           >
+            {/* Curso que se mide */}
+            {cursos.length > 1 && (
+              <div className="flex bg-[#14132b]/40 light:bg-neutral-100 p-1 rounded-2xl border border-white/5 light:border-neutral-200 gap-1 max-w-full w-fit overflow-x-auto no-scrollbar">
+                {cursos.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setCursoMetricas(c.id)}
+                    className={`px-4 py-2.5 text-xs font-bold rounded-xl whitespace-nowrap cursor-pointer transition-all ${
+                      cursoMetricas === c.id
+                        ? `bg-gradient-to-r ${c.accent} text-white shadow-md`
+                        : 'text-gray-400 light:text-neutral-600 hover:text-white'
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Top Metric Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="rounded-2xl border border-violet-500/20 bg-white/[0.02] light:bg-white p-5 flex flex-col justify-between shadow-sm">
@@ -577,8 +524,8 @@ export default function AdminPanel({
                   </div>
                 </div>
                 <div className="mt-3">
-                  <span className="text-3xl font-bold font-display text-white light:text-neutral-900">{totalStudentsCount}</span>
-                  <p className="text-[11px] text-gray-500 light:text-neutral-400 mt-0.5">En todos los colegios</p>
+                  <span className="text-3xl font-bold font-display text-white light:text-neutral-900">{metricas.alumnos}</span>
+                  <p className="text-[11px] text-gray-500 light:text-neutral-400 mt-0.5">Inscriptos en el curso</p>
                 </div>
               </div>
 
@@ -590,7 +537,7 @@ export default function AdminPanel({
                   </div>
                 </div>
                 <div className="mt-3">
-                  <span className="text-3xl font-bold font-display text-white light:text-neutral-900">{activeSchoolsCount}</span>
+                  <span className="text-3xl font-bold font-display text-white light:text-neutral-900">{metricas.colegiosConAlumnos}</span>
                   <p className="text-[11px] text-gray-500 light:text-neutral-400 mt-0.5">Instituciones vinculadas</p>
                 </div>
               </div>
@@ -603,8 +550,8 @@ export default function AdminPanel({
                   </div>
                 </div>
                 <div className="mt-3">
-                  <span className="text-3xl font-bold font-display text-emerald-400 light:text-emerald-600">{overallAvgProgress}%</span>
-                  <p className="text-[11px] text-gray-500 light:text-neutral-400 mt-0.5">Completitud del campus</p>
+                  <span className="text-3xl font-bold font-display text-emerald-400 light:text-emerald-600">{metricas.progresoPromedio === null ? '—' : `${metricas.progresoPromedio}%`}</span>
+                  <p className="text-[11px] text-gray-500 light:text-neutral-400 mt-0.5">Completitud del curso</p>
                 </div>
               </div>
 
@@ -635,7 +582,7 @@ export default function AdminPanel({
                     </h3>
                   </div>
                   <div className="px-3 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono font-bold text-sm">
-                    {onTimeEffectivenessPct === null ? '—' : `${onTimeEffectivenessPct}%`}
+                    {metricas.pctATiempo === null ? '—' : `${metricas.pctATiempo}%`}
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 light:text-neutral-500 mb-4 leading-relaxed">
@@ -644,12 +591,12 @@ export default function AdminPanel({
                 <div className="w-full h-2.5 rounded-full bg-neutral-800 light:bg-neutral-200 overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" 
-                    style={{ width: `${Math.min(100, Math.max(0, onTimeEffectivenessPct ?? 0))}%` }}
+                    style={{ width: `${Math.min(100, Math.max(0, metricas.pctATiempo ?? 0))}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[11px] font-mono text-gray-500 mt-2">
-                  <span>A tiempo: {totalOnTimeSubmissions}</span>
-                  <span>Exigidas: {totalExpectedDueSubmissions}</span>
+                  <span>A tiempo: {metricas.aTiempo}</span>
+                  <span>Exigidas: {metricas.esperadas}</span>
                 </div>
               </div>
 
@@ -664,7 +611,7 @@ export default function AdminPanel({
                     </h3>
                   </div>
                   <div className="px-3 py-1 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 font-mono font-bold text-sm">
-                    {totalDeliveryEffectivenessPct === null ? '—' : `${totalDeliveryEffectivenessPct}%`}
+                    {metricas.pctEntregadas === null ? '—' : `${metricas.pctEntregadas}%`}
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 light:text-neutral-500 mb-4 leading-relaxed">
@@ -673,12 +620,12 @@ export default function AdminPanel({
                 <div className="w-full h-2.5 rounded-full bg-neutral-800 light:bg-neutral-200 overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-full transition-all duration-500" 
-                    style={{ width: `${Math.min(100, Math.max(0, totalDeliveryEffectivenessPct ?? 0))}%` }}
+                    style={{ width: `${Math.min(100, Math.max(0, metricas.pctEntregadas ?? 0))}%` }}
                   />
                 </div>
                 <div className="flex justify-between text-[11px] font-mono text-gray-500 mt-2">
-                  <span>Entregadas: {totalDoneSubmissionsForDueClasses}</span>
-                  <span>Exigidas: {totalExpectedDueSubmissions}</span>
+                  <span>Entregadas: {metricas.entregadas}</span>
+                  <span>Exigidas: {metricas.esperadas}</span>
                 </div>
               </div>
             </div>
@@ -697,9 +644,9 @@ export default function AdminPanel({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {schoolMetrics.map(sc => (
+                {metricas.porColegio.map(sc => (
                   <div
-                    key={sc.name}
+                    key={sc.nombre}
                     className="rounded-2xl border border-white/5 light:border-neutral-200 bg-[#121124]/30 light:bg-white p-5 hover:border-violet-500/30 transition-all"
                   >
                     <div className="flex items-center justify-between mb-3">
@@ -708,20 +655,20 @@ export default function AdminPanel({
                           <School className="w-4 h-4" />
                         </div>
                         <div>
-                          <h4 className="font-bold text-white light:text-neutral-900 text-sm">{sc.name}</h4>
-                          <span className="text-[11px] text-gray-500 font-mono">{sc.studentCount} alumnos</span>
+                          <h4 className="font-bold text-white light:text-neutral-900 text-sm">{sc.nombre}</h4>
+                          <span className="text-[11px] text-gray-500 font-mono">{sc.alumnos} alumnos</span>
                         </div>
                       </div>
-                      <span className="text-xs font-mono font-bold text-emerald-400">{sc.avgProgress}%</span>
+                      <span className="text-xs font-mono font-bold text-emerald-400">{sc.progresoPromedio === null ? '—' : `${sc.progresoPromedio}%`}</span>
                     </div>
 
                     <div className="w-full h-1.5 rounded-full bg-neutral-800 light:bg-neutral-200 overflow-hidden mb-3">
-                      <div className="h-full bg-violet-500 rounded-full" style={{ width: `${sc.avgProgress}%` }} />
+                      <div className="h-full bg-violet-500 rounded-full" style={{ width: `${sc.progresoPromedio ?? 0}%` }} />
                     </div>
 
                     <div className="flex justify-between text-[10px] font-mono text-gray-400">
-                      <span className="text-emerald-400/90">{sc.okCount} al día</span>
-                      <span className="text-amber-400/90">{sc.warnCount} con pendientes</span>
+                      <span className="text-emerald-400/90">{sc.alDia} al día</span>
+                      <span className="text-amber-400/90">{sc.demorados} con pendientes</span>
                     </div>
                   </div>
                 ))}

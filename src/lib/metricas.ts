@@ -10,7 +10,8 @@
 import { ActivitySubmission, ClassItem, Student } from '../types';
 import { entregaEsDeLaClase } from '../classKeys';
 import { yaPaso } from './fechas';
-import { porcentajeDe } from './recorrido';
+import { calcularProgresos, porcentajeDe } from './recorrido';
+import { cursoDe, cursoDeEntrega, nivelEn } from './cursos';
 
 export interface MetricasColegio {
   nombre: string;
@@ -107,4 +108,25 @@ export function calcularMetricas(
     pctATiempo: esperadas === 0 ? null : Math.round((aTiempo / esperadas) * 100),
     porColegio,
   };
+}
+
+/**
+ * Métricas de un solo curso: sus clases, sus entregas y los alumnos inscriptos
+ * en él, cada uno con su nivel en ese curso. Así un alumno de Finanzas nivel 2
+ * que hace Vida Adulta nivel 0 cuenta en cada curso con el nivel que corresponde.
+ */
+export function metricasDeCurso(
+  course: string,
+  students: Student[],
+  classes: ClassItem[],
+  entregas: ActivitySubmission[],
+  colegios: string[],
+  ahora: Date = new Date()
+): Metricas {
+  const clases = classes.filter((cl) => cursoDe(cl) === course);
+  const suyas = entregas.filter((e) => cursoDeEntrega(e) === course);
+  const alumnos = calcularProgresos(students, clases, suyas, ahora, course)
+    .filter((s) => nivelEn(s, course) !== undefined)
+    .map((s) => ({ ...s, level: nivelEn(s, course) as number }));
+  return calcularMetricas(alumnos, clases, suyas, colegios, ahora);
 }

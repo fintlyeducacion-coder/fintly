@@ -16,7 +16,7 @@ import {
   resumir,
   sePuedeAbrir,
 } from '../src/lib/recorrido';
-import { calcularMetricas } from '../src/lib/metricas';
+import { calcularMetricas, metricasDeCurso } from '../src/lib/metricas';
 import { alcanceDeBorrado } from '../src/lib/borrado';
 import { contarPalabras, htmlATexto, textoAHtml, tieneTexto } from '../src/lib/contenido';
 import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../src/lib/embeds';
@@ -211,6 +211,30 @@ prueba('métricas: distingue entregado a tiempo de entregado tarde', () => {
   assert.equal(m.aTiempo, 1);
   assert.equal(m.pctEntregadas, 50);
   assert.equal(m.pctATiempo, 25);
+});
+
+prueba('métricas por curso: cada curso cuenta sus clases, sus entregas y su nivel', () => {
+  // Ana: Finanzas nivel 0 y Vida Adulta nivel 2. Beto: sólo Finanzas.
+  const ana = { ...alumno(ANA, COLE), inscripciones: [{ course: 'finanzas', level: 0 }, { course: 'vida-adulta', level: 2 }] };
+  const beto = alumno('b@faro.edu.ar', COLE);
+  const clases = [
+    clase(1, 1, { deadline: '2026-10-15T23:59' }),                                     // Finanzas N0, vencida
+    clase(1, 1, { course: 'vida-adulta', level: 2, deadline: '2026-10-15T23:59' }),    // Vida Adulta N2, vencida
+    clase(1, 2, { course: 'vida-adulta', level: 2, deadline: '2026-10-25T23:59' }),    // Vida Adulta N2, vencida
+  ];
+  const entregas = [
+    entrega(1, 1, { classLevel: 2, classCourse: 'vida-adulta', submittedAt: '2026-10-10T10:00' }),
+  ];
+  const fin = metricasDeCurso('finanzas', [ana, beto], clases, entregas, [COLE], AHORA);
+  assert.equal(fin.alumnos, 2);
+  assert.equal(fin.esperadas, 2, 'una clase vencida de Finanzas por alumno');
+  assert.equal(fin.entregadas, 0, 'la entrega de Vida Adulta no cuenta en Finanzas');
+  const va = metricasDeCurso('vida-adulta', [ana, beto], clases, entregas, [COLE], AHORA);
+  assert.equal(va.alumnos, 1, 'Beto no cursa Vida Adulta');
+  assert.equal(va.esperadas, 2);
+  assert.equal(va.entregadas, 1);
+  assert.equal(va.pctATiempo, 50);
+  assert.equal(va.porColegio[0].progresoPromedio, 50);
 });
 
 // ── Alcance de un borrado ───────────────────────────────────────
