@@ -801,6 +801,18 @@ ${error?.message || 'Error desconocido'}`);
 
           {/* Visual Embedding resources row links */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <CampoHtml
+              etiqueta="Presentación (HTML)"
+              ayuda="El .html de la presentación hecha con Claude."
+              tipo="presentacion"
+              valor={presentacionId}
+              nombre={presentacionInfo.nombre}
+              onCambio={(sub) => {
+                setPresentacionId(sub?.id ?? '');
+                setPresentacionInfo(sub ? { nombre: sub.nombre, html: sub.html } : {});
+              }}
+            />
+
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-gray-400 light:text-neutral-500 uppercase tracking-wider block">
                 Link completo de YouTube
@@ -816,18 +828,6 @@ ${error?.message || 'Error desconocido'}`);
                 Pegá el link completo de YouTube. Si todavía no está, dejalo vacío y agregalo después.
               </span>
             </div>
-
-            <CampoHtml
-              etiqueta="Presentación (HTML)"
-              ayuda="El .html de la presentación hecha con Claude."
-              tipo="presentacion"
-              valor={presentacionId}
-              nombre={presentacionInfo.nombre}
-              onCambio={(sub) => {
-                setPresentacionId(sub?.id ?? '');
-                setPresentacionInfo(sub ? { nombre: sub.nombre, html: sub.html } : {});
-              }}
-            />
 
             {slidesUrl.trim() && (
             <div className="space-y-1.5 sm:col-span-2">
@@ -980,8 +980,8 @@ ${error?.message || 'Error desconocido'}`);
                 {(
                   [
                     { id: 'content', label: 'Contenido' },
-                    { id: 'video', label: 'Video' },
                     { id: 'slides', label: 'Diapositivas' },
+                    { id: 'video', label: 'Video' },
                     { id: 'activity', label: 'Actividad' },
                   ] as const
                 ).map((tab) => {

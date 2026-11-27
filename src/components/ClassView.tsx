@@ -54,10 +54,11 @@ const GRADE_COLORS: Record<string, string> = {
 
 /* ── Types ────────────────────────────────────────────────────── */
 type Tab = 'content' | 'video' | 'slides' | 'activity';
+// Orden de la clase: leer, ver la presentación, mirar el video y hacer la actividad.
 const TABS: { id: Tab; label: string; Icon: React.FC<{ className?: string }> }[] = [
   { id: 'content',  label: 'Contenido',    Icon: BookOpen },
-  { id: 'video',    label: 'Video',        Icon: Video },
   { id: 'slides',   label: 'Diapositivas', Icon: Presentation },
+  { id: 'video',    label: 'Video',        Icon: Video },
   { id: 'activity', label: 'Actividad',    Icon: FilePenLine },
 ];
 
