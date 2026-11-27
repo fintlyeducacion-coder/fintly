@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ArrowLeft, BookOpen, Video, Presentation, FilePenLine,
+  ArrowLeft, ArrowRight, BookOpen, Video, Presentation, FilePenLine,
   Clock, CalendarDays, CheckCircle2, History, ChevronRight,
 } from 'lucide-react';
 import { ClassItem, User, ActivitySubmission, Curso } from '../types';
@@ -74,6 +74,15 @@ interface Props {
 /* ── ClassView ────────────────────────────────────────────────── */
 export default function ClassView({ user, curso, classItem, submissions, onBack, onSubmitActivity }: Props) {
   const [tab,           setTab]           = useState<Tab>('content');
+  const pestanas = useRef<HTMLDivElement>(null);
+  const indice   = TABS.findIndex((t) => t.id === tab);
+  const anterior = TABS[indice - 1];
+  const siguiente = TABS[indice + 1];
+  /** Cambiar de sección desde abajo: además, volver al principio de la sección. */
+  const irDesdeAbajo = (t: Tab) => {
+    setTab(t);
+    requestAnimationFrame(() => pestanas.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
   const [response,      setResponse]      = useState('');
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [enviando,      setEnviando]      = useState(false);
@@ -197,7 +206,7 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
       </motion.div>
 
       {/* Tabs */}
-      <div className="flex bg-white/[0.04] light:bg-slate-100 p-1 rounded-2xl border border-white/[0.06] light:border-slate-200 mb-6 sm:mb-8 overflow-x-auto no-scrollbar gap-0.5 w-full sm:w-fit max-w-full shadow-sm">
+      <div ref={pestanas} style={{ scrollMarginTop: 88 }} className="isolate flex bg-white/[0.04] light:bg-slate-100 p-1 rounded-2xl border border-white/[0.06] light:border-slate-200 mb-6 sm:mb-8 overflow-x-auto no-scrollbar gap-0.5 w-full sm:w-fit max-w-full shadow-sm">
         {TABS.map(({ id, label, Icon }) => {
           const active = tab === id;
           return (
@@ -439,6 +448,55 @@ export default function ClassView({ user, curso, classItem, submissions, onBack,
           )}
         </AnimatePresence>
       </div>
+
+      {/* Pasar de sección desde abajo, sin tener que volver a subir */}
+      <nav aria-label="Secciones de la clase" className="mt-8 sm:mt-10 pt-5 border-t border-white/[0.06] light:border-slate-200 flex items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          {anterior && (
+            <button
+              type="button"
+              onClick={() => irDesdeAbajo(anterior.id)}
+              className="group inline-flex items-center gap-2.5 max-w-full px-3.5 sm:px-4 py-2.5 rounded-xl border border-white/[0.08] light:border-slate-200 text-left hover:bg-white/[0.04] light:hover:bg-slate-50 cursor-pointer transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4 shrink-0 text-slate-400 group-hover:-translate-x-0.5 transition-transform" />
+              <span className="min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-wider text-slate-500">Anterior</span>
+                <span className="block text-[13px] font-semibold text-slate-200 light:text-slate-700 truncate">{anterior.label}</span>
+              </span>
+            </button>
+          )}
+        </div>
+
+        <div className="hidden min-[380px]:flex items-center gap-1.5 shrink-0" aria-hidden="true">
+          {TABS.map((t, k) => (
+            <span key={t.id} className={`h-1.5 rounded-full transition-all ${k === indice ? 'w-5 bg-violet-400' : 'w-1.5 bg-white/15 light:bg-slate-300'}`} />
+          ))}
+        </div>
+
+        <div className="flex-1 min-w-0 flex justify-end">
+          {siguiente ? (
+            <button
+              type="button"
+              onClick={() => irDesdeAbajo(siguiente.id)}
+              className="group inline-flex items-center gap-2.5 max-w-full px-3.5 sm:px-4 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-right text-white shadow-lg shadow-violet-900/25 cursor-pointer transition-all"
+            >
+              <span className="min-w-0">
+                <span className="block text-[10px] font-mono uppercase tracking-wider text-white/70">Siguiente</span>
+                <span className="block text-[13px] font-semibold truncate">{siguiente.label}</span>
+              </span>
+              <ArrowRight className="w-4 h-4 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-2 px-4 py-3 rounded-xl border border-white/[0.08] light:border-slate-200 text-[13px] font-semibold text-slate-300 light:text-slate-700 hover:bg-white/[0.04] light:hover:bg-slate-50 cursor-pointer transition-colors"
+            >
+              Volver al panel
+            </button>
+          )}
+        </div>
+      </nav>
     </div>
   );
 }
