@@ -17,6 +17,7 @@ import {
   sePuedeAbrir,
 } from '../src/lib/recorrido';
 import { calcularMetricas, metricasDeCurso } from '../src/lib/metricas';
+import { avisoPrincipal, cuantoFalta, tonoDePaso } from '../src/lib/avisos';
 import { alcanceDeBorrado } from '../src/lib/borrado';
 import { contarPalabras, htmlATexto, textoAHtml, tieneTexto } from '../src/lib/contenido';
 import { idDeYoutube, urlDeEmbed, urlDeYoutube } from '../src/lib/embeds';
@@ -235,6 +236,59 @@ prueba('métricas por curso: cada curso cuenta sus clases, sus entregas y su niv
   assert.equal(va.entregadas, 1);
   assert.equal(va.pctATiempo, 50);
   assert.equal(va.porColegio[0].progresoPromedio, 50);
+});
+
+// ── Avisos del alumno ───────────────────────────────────────────
+prueba('avisos: lo vencido sin entregar va primero, en rojo, y se puede abrir', () => {
+  const curso = [clase(1, 1, { deadline: '2026-11-05T23:59' }), clase(1, 2, { deadline: '2026-11-09T20:00' })];
+  const pasos = construirRecorrido(curso, [], alumna, AHORA);
+  assert.equal(tonoDePaso(pasos[0], AHORA), 'vencida');
+  assert.equal(tonoDePaso(pasos[1], AHORA), 'bloqueada');
+  const a = avisoPrincipal(pasos, AHORA);
+  assert.equal(a.tono, 'vencida');
+  assert.equal(a.clase?.week, 1);
+});
+
+prueba('avisos: vence hoy, mañana o con tiempo, según lo que falta', () => {
+  const con = (deadline: string) => avisoPrincipal(construirRecorrido([clase(1, 1, { deadline })], [], alumna, AHORA), AHORA);
+  const hoy = con('2026-11-09T20:00');
+  assert.equal(hoy.tono, 'hoy');
+  assert.ok(hoy.titulo.includes('8 h'), hoy.titulo);
+  assert.equal(con('2026-11-10T20:00').tono, 'manana');
+  assert.equal(con('2026-11-20T20:00').tono, 'disponible');
+});
+
+prueba('avisos: al día con una clase por abrir avisa cuándo abre; sin nada, al día', () => {
+  const curso = [clase(1, 1), clase(1, 2, { unlockAt: '2026-11-11T12:00' })];
+  const pasos = construirRecorrido(curso, [entrega(1, 1)], alumna, AHORA);
+  const a = avisoPrincipal(pasos, AHORA);
+  assert.equal(a.tono, 'programada');
+  assert.ok(a.titulo.includes('2 días'), a.titulo);
+  assert.equal(a.clase, undefined, 'no hay botón para una clase que no abrió');
+  assert.equal(avisoPrincipal(construirRecorrido([clase(1, 1)], [entrega(1, 1)], alumna, AHORA), AHORA).tono, 'aldia');
+  assert.equal(avisoPrincipal([], AHORA).tono, 'vacio');
+});
+
+prueba('avisos: el botón siempre lleva a una clase que el campus deja abrir', () => {
+  const casos = [
+    { curso: [clase(1, 1, { deadline: '2026-11-05T23:59' }), clase(1, 2)], entregas: [] },          // vencida
+    { curso: [clase(1, 1), clase(1, 2, { deadline: '2026-11-09T20:00' })], entregas: [entrega(1, 1)] }, // vence hoy
+    { curso: [clase(1, 1), clase(1, 2)], entregas: [entrega(1, 1)] },                                // disponible
+  ];
+  for (const { curso, entregas } of casos) {
+    const pasos = construirRecorrido(curso, entregas, alumna, AHORA);
+    const a = avisoPrincipal(pasos, AHORA);
+    const paso = pasos.find((p) => p.clase === a.clase);
+    assert.ok(paso && sePuedeAbrir(paso), `${a.tono}: la clase del botón tiene que poder abrirse`);
+    assert.equal(paso!.estado, 'disponible', 'lleva a la que le falta entregar, no a una ya entregada');
+  }
+});
+
+prueba('avisos: cuánto falta, en palabras', () => {
+  assert.equal(cuantoFalta('2026-11-09T12:40', AHORA), '40 min');
+  assert.equal(cuantoFalta('2026-11-09T17:00', AHORA), '5 h');
+  assert.equal(cuantoFalta('2026-11-10T12:00', AHORA), '1 día');
+  assert.equal(cuantoFalta('2026-11-08T12:00', AHORA), '');
 });
 
 // ── Alcance de un borrado ───────────────────────────────────────
